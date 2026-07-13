@@ -1,0 +1,148 @@
+<title>Lesson 1 · One schema, two payoffs</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap">
+  <p class="eyebrow">Applyo · Zod course · Lesson 1</p>
+  <h1>One schema, two payoffs</h1>
+  <p class="lede">Write the Opportunity form's rules once. Get a runtime validator <em>and</em> its TypeScript type out the other side — no hand-written interface to keep in sync.</p>
+
+  <p>You've written a Zod schema before, so <code>z.object({...})</code> won't be new. This lesson is about the two things that make Zod worth reaching for — and both land right on the spot where TypeScript still feels fuzzy.</p>
+
+  <h2>The problem Zod solves</h2>
+  <p>Without Zod, saving an opportunity means writing the same knowledge <em>twice</em>:</p>
+<pre><code><span class="tok-com">// 1. A type — so the rest of the app knows the shape</span>
+<span class="tok-key">interface</span> Opportunity {
+  title: string;
+  company: string;
+  sourceUrl?: string;
+}
+
+<span class="tok-com">// 2. Runtime checks — because the type vanishes at runtime</span>
+<span class="tok-key">if</span> (typeof input.title !== <span class="tok-str">"string"</span> || input.title === <span class="tok-str">""</span>) { <span class="tok-com">/* ... */</span> }
+<span class="tok-key">if</span> (typeof input.company !== <span class="tok-str">"string"</span>) { <span class="tok-com">/* ... */</span> }
+<span class="tok-com">// ...and these two drift apart the moment you add a field</span></code></pre>
+
+  <div class="aha">
+    <span class="tag">The key idea</span>
+    A TypeScript type is <strong>erased</strong> before your code runs — it can't check the JSON a form actually submits. So you need runtime checks too. Zod flips this: you write the <strong>runtime</strong> schema, and TypeScript reads the type <em>off it</em>. One source of truth, both jobs done.
+  </div>
+
+  <h2>Payoff 1 — the schema validates at runtime</h2>
+  <p>Here's the same three fields as a schema, and the way you'll actually call it in a form handler — <code>safeParse</code>:</p>
+<pre><code><span class="tok-key">import</span> * <span class="tok-key">as</span> z <span class="tok-key">from</span> <span class="tok-str">"zod"</span>;
+
+<span class="tok-key">const</span> OpportunitySchema = z.object({
+  title:     z.string().min(<span class="tok-str">1</span>, <span class="tok-str">"Title is required"</span>),
+  company:   z.string().min(<span class="tok-str">1</span>, <span class="tok-str">"Company is required"</span>),
+  sourceUrl: z.url().optional(),
+});
+
+<span class="tok-key">const</span> result = OpportunitySchema.safeParse(formInput);</code></pre>
+
+  <p><code>safeParse</code> never throws. It hands back one of two shapes — a <em>discriminated union</em>, which is just a fancy way of saying "check one flag and TypeScript knows which shape you have":</p>
+<pre><code><span class="tok-key">if</span> (result.success) {
+  result.data;    <span class="tok-com">// ✅ clean, typed Opportunity — safe to save</span>
+} <span class="tok-key">else</span> {
+  result.error;   <span class="tok-com">// ❌ a ZodError; result.error.issues lists what failed</span>
+}</code></pre>
+  <p class="small">Use <code>safeParse</code> (not <code>parse</code>) for form input: bad input from a user is <em>expected</em>, not an exception. <code>parse</code> throws on failure — save it for places where invalid data is a genuine bug.</p>
+
+  <div class="quiz" id="q1">
+    <p class="q">1. <code>formInput</code> is <code>{ title: "", company: "Acme" }</code>. What is <code>result</code>?</p>
+    <div class="opts">
+      <button class="opt" data-ok="0">Success, because company is present and valid there</button>
+      <button class="opt" data-ok="1">Failure, and one issue is raised for the empty title</button>
+      <button class="opt" data-ok="0">It throws before we ever get to read the result</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Payoff 2 — the type comes for free</h2>
+  <p>This is the line that removes work from your plate. Instead of hand-writing <code>interface Opportunity</code>, you <em>ask the schema</em> for its type:</p>
+<pre><code><span class="tok-key">type</span> Opportunity = z.infer&lt;<span class="tok-key">typeof</span> OpportunitySchema&gt;;
+<span class="tok-com">// ⇒ { title: string; company: string; sourceUrl?: string }</span></code></pre>
+
+  <div class="note">
+    <span class="tag">Reading that line slowly</span>
+    <code>typeof OpportunitySchema</code> = "the type of the schema <em>value</em>." <code>z.infer&lt;...&gt;</code> = "now dig the <em>data</em> type out of it." You never write the field list twice. Add <code>closingDate</code> to the schema and the <code>Opportunity</code> type grows to match — automatically. The two-can't-drift-apart property is the whole point.
+  </div>
+
+  <p>And because <code>result.data</code> already <em>is</em> that type, this just works with no casting:</p>
+<pre><code><span class="tok-key">if</span> (result.success) {
+  saveOpportunity(result.data);  <span class="tok-com">// result.data : Opportunity</span>
+}</code></pre>
+
+  <div class="quiz" id="q2">
+    <p class="q">2. You add <code>notes: z.string().optional()</code> to the schema. What must you change about the <code>Opportunity</code> type?</p>
+    <div class="opts">
+      <button class="opt" data-ok="0">Add an optional notes property to the interface by hand</button>
+      <button class="opt" data-ok="1">Nothing at all — the inferred type updates itself here</button>
+      <button class="opt" data-ok="0">Rerun a codegen build step before the type refreshes</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Your win for today</h2>
+  <p>In your Applyo repo, create a schema file and prove the loop to yourself:</p>
+  <ol>
+    <li>Write <code>OpportunitySchema</code> with <code>title</code>, <code>company</code>, and <code>sourceUrl</code> (start with just these three).</li>
+    <li>Export <code>type Opportunity = z.infer&lt;typeof OpportunitySchema&gt;</code>.</li>
+    <li>Call <code>safeParse</code> on a good object and a bad one; <code>console.log</code> both results and read the <code>issues</code> array on the failure.</li>
+    <li>Hover the <code>Opportunity</code> type in your editor — confirm it matches the schema with nothing hand-written.</li>
+  </ol>
+  <p class="small">Suggested home: <code>src/lib/schemas/opportunity.ts</code>. You don't need a form or a component yet — a scratch file and the terminal are enough to see it work. (This is a spike: no tests required, just the learning note.)</p>
+
+  <details class="reveal">
+    <summary>Self-test before you peek at the next lesson</summary>
+    <p>Answer out loud, from memory:</p>
+    <ul>
+      <li>Why can't a TypeScript <code>interface</code> validate a submitted form on its own?</li>
+      <li>What are the <em>two</em> shapes <code>safeParse</code> can return, and which flag distinguishes them?</li>
+      <li>What does <code>z.infer&lt;typeof S&gt;</code> give you, and why does that mean two definitions can't drift apart?</li>
+    </ul>
+    <p>Shaky on any of these? That's your next question for me — don't move on until they click.</p>
+  </details>
+
+  <div class="aha">
+    <span class="tag">Interview-ready sentence</span>
+    "I define one Zod schema as the single source of truth: it validates untrusted input at runtime with <code>safeParse</code>, and I derive the static TypeScript type from it with <code>z.infer</code>, so the validation and the types can never drift apart."
+  </div>
+
+  <h2>Keep going</h2>
+  <p><strong>Primary source (read this next):</strong> <a href="https://zod.dev/basics" target="_blank" rel="noopener">Zod docs — Basics</a>. It's short and covers exactly today's loop: <code>z.object</code>, <code>safeParse</code>, and <code>z.infer</code>. Everything there is Zod v4, same as us.</p>
+  <p><strong>Reference:</strong> keep the <a href="../reference/zod-cheatsheet.html">Zod v4 cheat sheet</a> open while you code — it maps each validator to an Applyo field.</p>
+  <p><strong>Next lesson:</strong> modelling the <em>whole</em> Opportunity form — coercing string inputs to numbers and dates, the <code>status</code> enum, and optional fields. (Lesson 2, coming when you're ready.)</p>
+
+  <div class="footer-nav">
+    <span><a href="../reference/zod-cheatsheet.html">Cheat sheet →</a></span>
+    <span class="ask">I'm your teacher — ask me anything that's unclear, or to review your schema once you've written it.</span>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var fb = quiz.querySelector('.feedback');
+    var msgs = {
+      q1: {
+        ok: "Right. <code>min(1)</code> rejects the empty title, so <code>result.success</code> is <code>false</code> and <code>result.error.issues</code> holds one issue pointing at <code>title</code>. safeParse returns it — it never throws.",
+        no: "Not quite. <code>title</code> is <code>\"\"</code>, and <code>.min(1)</code> rejects an empty string — so the whole parse fails. safeParse reports it as <code>{ success: false }</code>; it doesn't throw, and one bad field fails the object."
+      },
+      q2: {
+        ok: "Exactly. <code>z.infer</code> re-reads the schema every compile — the type tracks the schema automatically. That's the single-source-of-truth payoff.",
+        no: "Nope — that's the old hand-written world. With <code>z.infer&lt;typeof Schema&gt;</code> the type is computed from the schema, so editing the schema updates the type with no manual edit and no codegen step."
+      }
+    };
+    quiz.querySelectorAll('.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.dataset.ok === "1";
+        quiz.querySelectorAll('.opt').forEach(function (b) {
+          b.disabled = true;
+          if (b.dataset.ok === "1") b.classList.add('correct');
+        });
+        if (!correct) btn.classList.add('wrong');
+        fb.innerHTML = correct ? msgs[quiz.id].ok : msgs[quiz.id].no;
+        fb.className = 'feedback show ' + (correct ? 'ok' : 'no');
+      });
+    });
+  });
+</script>

@@ -1,0 +1,241 @@
+/* Applyo · Zod course — shared stylesheet
+   One look across every lesson and reference sheet. Tufte-ish: serif prose,
+   generous margins, a readable measure, restrained colour. Theme-aware + print. */
+
+:root {
+  --measure: 40rem;
+  --ink: #1a1a17;
+  --ink-soft: #55524b;
+  --bg: #fbfaf7;
+  --bg-panel: #f2efe8;
+  --rule: #e0dccf;
+  --accent: #7a5b1e;          /* muted ochre — Applyo's "opportunity" warmth */
+  --accent-soft: #f6edd8;
+  --good: #2f6b3f;
+  --good-soft: #e7f1e8;
+  --bad: #9a2f2f;
+  --bad-soft: #f6e6e3;
+  --code-bg: #f4f1ea;
+  --code-ink: #33302a;
+  --font-serif: Iowan Old Style, "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e9e6df;
+    --ink-soft: #a8a49a;
+    --bg: #17171a;
+    --bg-panel: #202024;
+    --rule: #34343a;
+    --accent: #d6b370;
+    --accent-soft: #2b2717;
+    --good: #7fc490;
+    --good-soft: #1b2a1f;
+    --bad: #e29a92;
+    --bad-soft: #2c1c1a;
+    --code-bg: #202024;
+    --code-ink: #dcd8cf;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #e9e6df; --ink-soft: #a8a49a; --bg: #17171a; --bg-panel: #202024;
+  --rule: #34343a; --accent: #d6b370; --accent-soft: #2b2717; --good: #7fc490;
+  --good-soft: #1b2a1f; --bad: #e29a92; --bad-soft: #2c1c1a; --code-bg: #202024;
+  --code-ink: #dcd8cf;
+}
+:root[data-theme="light"] {
+  --ink: #1a1a17; --ink-soft: #55524b; --bg: #fbfaf7; --bg-panel: #f2efe8;
+  --rule: #e0dccf; --accent: #7a5b1e; --accent-soft: #f6edd8; --good: #2f6b3f;
+  --good-soft: #e7f1e8; --bad: #9a2f2f; --bad-soft: #f6e6e3; --code-bg: #f4f1ea;
+  --code-ink: #33302a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 3.5rem 1.5rem 6rem;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: var(--measure); margin: 0 auto; }
+.wide { max-width: 52rem; }
+
+/* --- Masthead --- */
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: .74rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  margin: 0 0 .6rem;
+}
+h1 {
+  font-size: 2.1rem;
+  line-height: 1.14;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  margin: 0 0 .5rem;
+}
+.lede {
+  font-size: 1.24rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 0 0 2.2rem;
+}
+h2 {
+  font-size: 1.4rem;
+  margin: 2.6rem 0 .8rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+  font-weight: 700;
+}
+h3 { font-size: 1.12rem; margin: 1.8rem 0 .5rem; font-weight: 700; }
+p { margin: 0 0 1.1rem; }
+a { color: var(--accent); text-underline-offset: .18em; text-decoration-thickness: 1px; }
+strong { font-weight: 700; }
+em { font-style: italic; }
+ul, ol { padding-left: 1.3rem; }
+li { margin: .35rem 0; }
+.small { font-size: .95rem; color: var(--ink-soft); }
+
+/* --- Code --- */
+code {
+  font-family: var(--font-mono);
+  font-size: .84em;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  padding: .1em .35em;
+  border-radius: 4px;
+}
+pre {
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  line-height: 1.55;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  padding: 1rem 1.15rem;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  overflow-x: auto;
+  margin: 0 0 1.2rem;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+.tok-key { color: var(--accent); }
+.tok-str { color: var(--good); }
+.tok-com { color: var(--ink-soft); font-style: italic; }
+
+/* --- Callouts --- */
+.note, .aha, .warn {
+  font-family: var(--font-sans);
+  font-size: .98rem;
+  line-height: 1.55;
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  margin: 1.4rem 0;
+  border: 1px solid var(--rule);
+}
+.note { background: var(--bg-panel); }
+.aha  { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.warn { background: var(--bad-soft);   border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.note .tag, .aha .tag, .warn .tag {
+  display: block;
+  font-size: .7rem; letter-spacing: .14em; text-transform: uppercase;
+  font-weight: 700; margin-bottom: .35rem;
+}
+.aha .tag { color: var(--accent); }
+.warn .tag { color: var(--bad); }
+.note .tag { color: var(--ink-soft); }
+
+/* --- Quiz widget --- */
+.quiz {
+  font-family: var(--font-sans);
+  background: var(--bg-panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 1.3rem 1.4rem;
+  margin: 1.6rem 0;
+}
+.quiz .q { font-weight: 700; margin: 0 0 .9rem; font-size: 1.02rem; }
+.quiz .opts { display: grid; gap: .55rem; }
+.quiz button.opt {
+  font: inherit;
+  text-align: left;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: .7rem .9rem;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.quiz button.opt:hover { border-color: var(--accent); }
+.quiz button.opt.correct { background: var(--good-soft); border-color: var(--good); }
+.quiz button.opt.wrong   { background: var(--bad-soft);  border-color: var(--bad); }
+.quiz button.opt:disabled { cursor: default; }
+.quiz .feedback {
+  margin-top: .9rem; font-size: .95rem; line-height: 1.5;
+  padding: .7rem .9rem; border-radius: 7px; display: none;
+}
+.quiz .feedback.show { display: block; }
+.quiz .feedback.ok  { background: var(--good-soft); color: var(--good); }
+.quiz .feedback.no  { background: var(--bad-soft);  color: var(--bad); }
+.quiz code { font-size: .82em; }
+
+/* --- Reveal (self-test) --- */
+details.reveal {
+  font-family: var(--font-sans);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: .3rem 1rem;
+  margin: 1.4rem 0;
+  background: var(--bg-panel);
+}
+details.reveal summary {
+  cursor: pointer; font-weight: 700; padding: .6rem 0; font-size: .98rem;
+  color: var(--accent);
+}
+details.reveal[open] summary { margin-bottom: .4rem; }
+
+/* --- Footer nav --- */
+.footer-nav {
+  font-family: var(--font-sans);
+  margin-top: 3.5rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+  font-size: .95rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+.footer-nav .ask { color: var(--ink-soft); }
+
+/* --- Tables (reference sheets) --- */
+table { border-collapse: collapse; width: 100%; font-family: var(--font-sans); font-size: .9rem; margin: 0 0 1.4rem; }
+th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+td code { white-space: nowrap; }
+.scroll { overflow-x: auto; }
+
+/* --- Print --- */
+@media print {
+  :root {
+    --ink:#000; --ink-soft:#333; --bg:#fff; --bg-panel:#f4f4f4; --rule:#bbb;
+    --code-bg:#f4f4f4; --code-ink:#000; --accent:#6b4e17;
+  }
+  body { padding: 0; font-size: 10.5pt; }
+  .quiz .opts button, details.reveal { break-inside: avoid; }
+  details.reveal[open] { display: block; }
+  details.reveal:not([open]) summary::after { content: " — open in browser to reveal"; color:#777; font-weight:400; }
+  .footer-nav { break-inside: avoid; }
+  a { color: #000; text-decoration: underline; }
+}

@@ -1,0 +1,76 @@
+<title>Zod v4 Cheat Sheet · Applyo</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap wide">
+  <p class="eyebrow">Applyo · Zod course · Reference</p>
+  <h1>Zod v4 cheat sheet</h1>
+  <p class="lede">The validators you'll reach for building Applyo's forms — mapped to real fields. Zod v4 (<code>import * as z from "zod"</code>).</p>
+
+  <div class="note">
+    <span class="tag">v3 → v4</span>
+    Format checks moved to the top level: it's <code>z.email()</code>, <code>z.url()</code>, <code>z.uuid()</code> — <em>not</em> <code>z.string().email()</code>. And error messages use one <code>error</code> parameter (a string or function), replacing v3's <code>message</code> / <code>required_error</code> / <code>invalid_type_error</code>.
+  </div>
+
+  <h2>The core loop</h2>
+  <div class="scroll"><table>
+    <tr><th>Step</th><th>Code</th><th>What you get</th></tr>
+    <tr><td>Define</td><td><code>const S = z.object({ ... })</code></td><td>A schema (a runtime object)</td></tr>
+    <tr><td>Validate</td><td><code>const r = S.safeParse(input)</code></td><td><code>{ success: true, data }</code> or <code>{ success: false, error }</code></td></tr>
+    <tr><td>Derive type</td><td><code>type S = z.infer&lt;typeof S&gt;</code></td><td>The TypeScript type, for free</td></tr>
+    <tr><td>Read errors</td><td><code>r.error.issues</code></td><td>Array of <code>{ path, message, code }</code></td></tr>
+  </table></div>
+
+  <h2>Strings — <span class="small">title, company, notes</span></h2>
+<pre><code><span class="tok-key">z</span>.string()                      <span class="tok-com">// any string</span>
+<span class="tok-key">z</span>.string().min(<span class="tok-str">1</span>, <span class="tok-str">"Title is required"</span>)   <span class="tok-com">// non-empty</span>
+<span class="tok-key">z</span>.string().max(<span class="tok-str">120</span>)
+<span class="tok-key">z</span>.string().trim()               <span class="tok-com">// transforms: strips whitespace</span></code></pre>
+
+  <h2>Formats — <span class="small">sourceUrl, a contact email</span></h2>
+<pre><code><span class="tok-key">z</span>.url()                          <span class="tok-com">// valid URL string</span>
+<span class="tok-key">z</span>.url({ protocol: <span class="tok-str">/^https?$/</span> }) <span class="tok-com">// http/https only</span>
+<span class="tok-key">z</span>.email(<span class="tok-str">"Enter a valid email"</span>)   <span class="tok-com">// error msg as 1st arg</span></code></pre>
+
+  <h2>Enums — <span class="small">opportunity status, pipeline stage</span></h2>
+<pre><code><span class="tok-key">z</span>.enum([<span class="tok-str">"saved"</span>, <span class="tok-str">"reviewing"</span>, <span class="tok-str">"ready_to_apply"</span>,
+        <span class="tok-str">"ignored"</span>, <span class="tok-str">"expired"</span>, <span class="tok-str">"converted"</span>])
+<span class="tok-com">// input must be exactly one of these strings</span></code></pre>
+
+  <h2>Numbers &amp; coercion — <span class="small">salary, match score</span></h2>
+  <div class="note"><span class="tag">Why coerce</span> Every value from an HTML <code>&lt;input&gt;</code> arrives as a <strong>string</strong> — even a number field. <code>z.coerce.number()</code> runs <code>Number(input)</code> first, so <code>"5000"</code> becomes <code>5000</code>.</div>
+<pre><code><span class="tok-key">z</span>.number().int().gte(<span class="tok-str">0</span>).lte(<span class="tok-str">100</span>)   <span class="tok-com">// match score 0–100</span>
+<span class="tok-key">z</span>.coerce.number()                    <span class="tok-com">// "5000" → 5000</span>
+<span class="tok-key">z</span>.coerce.date()                      <span class="tok-com">// "2026-07-12" → Date</span></code></pre>
+
+  <h2>Absent values — <span class="small">salary range, closing date</span></h2>
+  <div class="scroll"><table>
+    <tr><th>Modifier</th><th>Allows</th><th>Use for</th></tr>
+    <tr><td><code>.optional()</code></td><td><code>undefined</code></td><td>field may be omitted</td></tr>
+    <tr><td><code>.nullable()</code></td><td><code>null</code></td><td>field explicitly empty</td></tr>
+    <tr><td><code>.default(x)</code></td><td>fills in <code>x</code> when missing</td><td><code>status</code> defaults to <code>"saved"</code></td></tr>
+  </table></div>
+<pre><code>salaryMax: <span class="tok-key">z</span>.coerce.number().optional(),
+status:    <span class="tok-key">z</span>.enum([...]).default(<span class="tok-str">"saved"</span>),</code></pre>
+
+  <h2>Cross-field rules — <span class="small">salary min ≤ max</span></h2>
+<pre><code><span class="tok-key">z</span>.object({
+  salaryMin: <span class="tok-key">z</span>.coerce.number().optional(),
+  salaryMax: <span class="tok-key">z</span>.coerce.number().optional(),
+}).refine(
+  (d) => !d.salaryMin || !d.salaryMax || d.salaryMin &lt;= d.salaryMax,
+  { error: <span class="tok-str">"Min salary can't exceed max"</span>, path: [<span class="tok-str">"salaryMax"</span>] }
+)</code></pre>
+  <div class="note"><span class="tag">path</span> The <code>path</code> tells the UI <em>which field</em> to show the error under. Without it the issue attaches to the whole object.</div>
+
+  <h2>Reading errors in a form</h2>
+<pre><code><span class="tok-key">const</span> r = OpportunitySchema.safeParse(formData);
+<span class="tok-key">if</span> (!r.success) {
+  <span class="tok-key">const</span> tree = <span class="tok-key">z</span>.treeifyError(r.error); <span class="tok-com">// nested, by field</span>
+  <span class="tok-com">// or iterate r.error.issues → { path, message }</span>
+}</code></pre>
+
+  <div class="footer-nav">
+    <span><a href="../lessons/0001-one-schema-two-payoffs.html">← Lesson 1</a></span>
+    <span class="ask">Something here out of date or unclear? Ask your teacher.</span>
+  </div>
+</div>
