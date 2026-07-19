@@ -1,0 +1,83 @@
+<title>TanStack Query v5 Cheat Sheet · Applyo</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap wide">
+  <p class="eyebrow">Applyo · TanStack Query · Reference</p>
+  <h1>TanStack Query v5 cheat sheet</h1>
+  <p class="lede">The query mechanics you'll reach for wiring Applyo's data layer — mapped to real endpoints. React v5 (<code>@tanstack/react-query</code>). Grows as the course does.</p>
+
+  <div class="note">
+    <span class="tag">v4 → v5</span>
+    Single object signature only: <code>useQuery({ queryKey, queryFn })</code> (no positional args). "No data yet" is <code>isPending</code>, not <code>isLoading</code> (<code>isLoading</code> now = <code>isPending &amp;&amp; isFetching</code>, i.e. the first load). Cache GC time is <code>gcTime</code>, not <code>cacheTime</code>.
+  </div>
+
+  <h2>The mental model</h2>
+  <div class="scroll"><table>
+    <tr><th>Kind</th><th>Who owns it</th><th>Tool</th><th>Applyo example</th></tr>
+    <tr><td>Client state</td><td>You. True when you set it.</td><td><code>useState</code> / Zustand</td><td>Status filter, "add form open?"</td></tr>
+    <tr><td>Server state</td><td>The server. You hold a copy that goes <em>stale</em>.</td><td>TanStack Query</td><td>The opportunities list, one opportunity</td></tr>
+  </table></div>
+  <p class="small">TanStack Query is an <em>async state manager</em>, not a fetch wrapper: it caches a copy of server-owned data and decides when to refetch.</p>
+
+  <h2>The anatomy</h2>
+<pre><code><span class="tok-key">const</span> { data, isPending, isError, error, isFetching } = useQuery({
+  queryKey: [<span class="tok-str">"opportunities"</span>],   <span class="tok-com">// cache ADDRESS — same key ⇒ same data, shared request</span>
+  queryFn: fetchOpportunities,    <span class="tok-com">// returns a Promise; MUST throw on failure</span>
+});</code></pre>
+
+  <h2>queryFn — the throw rule</h2>
+<pre><code><span class="tok-key">async function</span> fetchOpportunities(): Promise&lt;Opportunity[]&gt; {
+  <span class="tok-key">const</span> res = <span class="tok-key">await</span> fetch(<span class="tok-str">"/api/opportunities"</span>);
+  <span class="tok-key">if</span> (!res.ok) <span class="tok-key">throw new</span> Error(<span class="tok-str">"Failed to load opportunities"</span>);
+  <span class="tok-key">return</span> res.json();          <span class="tok-com">// fetch does NOT reject on 4xx/5xx — you must throw</span>
+}</code></pre>
+
+  <h2>Reading state — two questions</h2>
+  <div class="scroll"><table>
+    <tr><th>Field</th><th>Answers</th><th>Values</th></tr>
+    <tr><td><code>status</code></td><td>Do we have <strong>data</strong>?</td><td><code>pending</code> · <code>error</code> · <code>success</code></td></tr>
+    <tr><td><code>fetchStatus</code></td><td>Is the <strong>queryFn</strong> running?</td><td><code>fetching</code> · <code>paused</code> · <code>idle</code></td></tr>
+  </table></div>
+  <div class="scroll"><table>
+    <tr><th>Boolean</th><th>True when</th><th>Use for</th></tr>
+    <tr><td><code>isPending</code></td><td>No data cached yet</td><td>First-load skeleton</td></tr>
+    <tr><td><code>isError</code></td><td>queryFn threw</td><td>Show <code>error.message</code></td></tr>
+    <tr><td><code>isSuccess</code></td><td>Data is available</td><td>Render <code>data</code></td></tr>
+    <tr><td><code>isFetching</code></td><td>queryFn running (incl. background)</td><td>Subtle "refreshing" spinner over old data</td></tr>
+  </table></div>
+
+  <h2>queryKey patterns</h2>
+<pre><code>[<span class="tok-str">"opportunities"</span>]                          <span class="tok-com">// the whole list</span>
+[<span class="tok-str">"opportunities"</span>, { status: <span class="tok-str">"saved"</span> }]      <span class="tok-com">// a filtered list — different address</span>
+[<span class="tok-str">"opportunity"</span>, id]                        <span class="tok-com">// one item by id</span></code></pre>
+  <p class="small">Keys are arrays, compared by value (deep). Put every variable the <code>queryFn</code> depends on <em>in the key</em> — change the inputs, change the address, get a fresh cache entry (and an automatic refetch).</p>
+
+  <h2>App Router setup (Next.js 16)</h2>
+<pre><code><span class="tok-com">// src/app/providers.tsx</span>
+<span class="tok-str">"use client"</span>;
+<span class="tok-key">import</span> { QueryClient, QueryClientProvider } <span class="tok-key">from</span> <span class="tok-str">"@tanstack/react-query"</span>;
+<span class="tok-key">import</span> { useState } <span class="tok-key">from</span> <span class="tok-str">"react"</span>;
+
+<span class="tok-key">export default function</span> Providers({ children }: { children: React.ReactNode }) {
+  <span class="tok-key">const</span> [client] = useState(() =&gt; <span class="tok-key">new</span> QueryClient());  <span class="tok-com">// once per client, not module top-level</span>
+  <span class="tok-key">return</span> &lt;QueryClientProvider client={client}&gt;{children}&lt;/QueryClientProvider&gt;;
+}
+<span class="tok-com">// then wrap {children} with &lt;Providers&gt; in src/app/layout.tsx</span></code></pre>
+  <div class="warn">
+    <span class="tag">Two rules that cause 90% of "it doesn't work"</span>
+    <strong>1.</strong> <code>useQuery</code> must run inside a Client Component (<code>"use client"</code>) under the provider. <strong>2.</strong> Never create the <code>QueryClient</code> at module top-level — on the server one instance would be shared across all requests/users. <code>useState(() =&gt; new QueryClient())</code> pins one per client.
+  </div>
+
+  <h2>Where this maps to Applyo</h2>
+  <div class="scroll"><table>
+    <tr><th>Need</th><th>Endpoint</th><th>queryKey</th></tr>
+    <tr><td>List opportunities</td><td><code>GET /api/opportunities</code></td><td><code>["opportunities"]</code></td></tr>
+    <tr><td>One opportunity</td><td><code>GET /api/opportunities/[id]</code></td><td><code>["opportunity", id]</code></td></tr>
+    <tr><td>Filtered list</td><td><code>GET /api/opportunities?status=</code></td><td><code>["opportunities", { status }]</code></td></tr>
+  </table></div>
+
+  <div class="footer-nav">
+    <span><a href="../lessons/0004-server-state-first-query.html">← Lesson 1</a></span>
+    <span class="ask">Reference sheet — grows each lesson. Ask me to add anything you keep looking up.</span>
+  </div>
+</div>

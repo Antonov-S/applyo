@@ -226,6 +226,35 @@ th { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: 
 td code { white-space: nowrap; }
 .scroll { overflow-x: auto; }
 
+/* --- Pipeline diagram (before / gate / after) --- */
+.pipeline {
+  font-family: var(--font-sans);
+  display: flex; flex-wrap: wrap; align-items: stretch;
+  gap: .45rem; margin: 1.5rem 0; font-size: .84rem;
+}
+.pipeline .stage {
+  flex: 1 1 8rem; min-width: 7.5rem;
+  border: 1px solid var(--rule); border-radius: 8px;
+  padding: .7rem .8rem; background: var(--bg-panel); line-height: 1.4;
+}
+.pipeline .stage .lbl {
+  display: block; font-size: .64rem; letter-spacing: .12em;
+  text-transform: uppercase; font-weight: 700; margin-bottom: .3rem;
+  color: var(--ink-soft);
+}
+.pipeline .before .lbl { color: var(--accent); }
+.pipeline .after  .lbl { color: var(--good); }
+.pipeline .gate {
+  flex: 0 1 6rem; text-align: center;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.pipeline .arrow { align-self: center; color: var(--ink-soft); font-weight: 700; }
+.pipeline code { background: none; padding: 0; font-size: .82em; }
+@media print { .pipeline .stage, .pipeline .gate { break-inside: avoid; } }
+
 /* --- Print --- */
 @media print {
   :root {

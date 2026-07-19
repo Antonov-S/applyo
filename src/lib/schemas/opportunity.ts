@@ -1,5 +1,6 @@
 import * as z from "zod";
 
+// preprocess
 const optionalSalaryNumber = z.preprocess(value => {
   if (value === "" || value === null || value === undefined) {
     return undefined;
@@ -15,10 +16,12 @@ const SalaryRangeSchema = z
     currency: z.enum(["BGN", "EUR", "USD"]),
     period: z.enum(["hour", "month", "year"])
   })
+  // preprocess
   .refine(({ min, max }) => min !== undefined || max !== undefined, {
     message: "At least one salary value is required",
     path: ["min"]
   })
+  // preprocess
   .refine(
     ({ min, max }) => min === undefined || max === undefined || min <= max,
     {
@@ -27,6 +30,7 @@ const SalaryRangeSchema = z
     }
   );
 
+// preprocess
 const OptionalSalaryRangeSchema = z.preprocess(value => {
   if (value === null || value === undefined) {
     return undefined;
@@ -58,6 +62,7 @@ function getCurrentLocalDate() {
 const PublicationDateSchema = z
   .string()
   .min(1, { error: "Publication date is required" })
+  // pipe
   .pipe(
     z.iso.date({
       error: "Publication date must be a valid date"
@@ -70,6 +75,7 @@ const PublicationDateSchema = z
 const DateDiscoveredSchema = z
   .string()
   .min(1, { error: "Discovered date is required" })
+  // pipe
   .pipe(
     z.iso.date({
       error: "Discovered date must be a valid date"

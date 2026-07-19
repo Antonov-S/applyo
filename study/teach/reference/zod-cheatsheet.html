@@ -62,15 +62,41 @@ status:    <span class="tok-key">z</span>.enum([...]).default(<span class="tok-s
 )</code></pre>
   <div class="note"><span class="tag">path</span> The <code>path</code> tells the UI <em>which field</em> to show the error under. Without it the issue attaches to the whole object.</div>
 
-  <h2>Reading errors in a form</h2>
+  <h2>Massaging input — <span class="small">coerce vs preprocess vs transform vs pipe</span></h2>
+  <div class="note"><span class="tag">One question tells them apart</span> Does it run <strong>before</strong> the validation gate (fixing input so it can pass) or <strong>after</strong> (reshaping a value already valid)? See <a href="../lessons/0002-coerce-preprocess-transform.html">Lesson 2</a>.</div>
+  <div class="warn"><span class="tag">Not on this list: <code>.refine()</code></span> These four all <em>massage</em> (change) the value. <code>.refine()</code> is a <strong>validation check</strong> — it inspects the value and passes it through <em>unchanged</em> or raises an issue. Mirror of <code>.transform()</code>: transform reshapes but can't reject; refine can reject but doesn't reshape. Covered in Lesson 4.</div>
+  <div class="scroll"><table>
+    <tr><th>Tool</th><th>Runs</th><th>Use when</th></tr>
+    <tr><td><code>z.coerce.number()</code></td><td>before gate</td><td>built-in JS conversion is exactly right (<code>"5000"</code>→<code>5000</code>)</td></tr>
+    <tr><td><code>z.preprocess(fn, S)</code></td><td>before gate</td><td>you need a <em>custom</em> rule on raw input (blank → <code>undefined</code>)</td></tr>
+    <tr><td><code>.transform(fn)</code></td><td>after gate</td><td>reshape/derive a value you know is valid; may change output type</td></tr>
+    <tr><td><code>A.pipe(B)</code></td><td>gate → gate</td><td>each step is itself a schema (string, <em>then</em> ISO date)</td></tr>
+  </table></div>
+  <div class="warn"><span class="tag">The coerce trap</span> <code>z.coerce.number().optional()</code> turns <code>""</code> and <code>null</code> into <code>0</code> — <code>.optional()</code> only catches <code>undefined</code>. For "blank means absent," normalise with <code>preprocess</code> first.</div>
+<pre><code><span class="tok-key">z</span>.preprocess(v => v === <span class="tok-str">""</span> ? <span class="tok-key">undefined</span> : Number(v),
+             <span class="tok-key">z</span>.number().nonnegative().optional())
+<span class="tok-com">// input type: z.input&lt;typeof S&gt;   output type: z.infer&lt;typeof S&gt; — they differ once you massage</span></code></pre>
+
+  <h2>Reading errors in a form — <span class="small">see <a href="../lessons/0003-per-field-errors.html">Lesson 3</a></span></h2>
+  <p class="small">Every issue = <code>{ code, path, message }</code>. <code>path</code> is the field's <em>address</em>: <code>["salaryRange","max"]</code>, <code>["requiredTechnologies", 1]</code>. Join it for a key.</p>
+  <div class="scroll"><table>
+    <tr><th>Tool</th><th>Returns</th><th>Use for</th></tr>
+    <tr><td><code>r.error.issues</code></td><td>flat <code>[{ path, message, code }]</code></td><td>full control — map it yourself</td></tr>
+    <tr><td><code>z.flattenError(e)</code></td><td><code>{ formErrors, fieldErrors }</code></td><td>flat forms; <strong>collapses</strong> nested/array paths to top key</td></tr>
+    <tr><td><code>z.treeifyError(e)</code></td><td>nested <code>.properties</code>/<code>.items</code>/<code>.errors</code></td><td>nested objects &amp; arrays (salaryRange, tech list)</td></tr>
+    <tr><td><code>z.prettifyError(e)</code></td><td>human-readable string</td><td>logs / console, not per-field UI</td></tr>
+  </table></div>
 <pre><code><span class="tok-key">const</span> r = OpportunitySchema.safeParse(formData);
 <span class="tok-key">if</span> (!r.success) {
-  <span class="tok-key">const</span> tree = <span class="tok-key">z</span>.treeifyError(r.error); <span class="tok-com">// nested, by field</span>
-  <span class="tok-com">// or iterate r.error.issues → { path, message }</span>
+  <span class="tok-com">// map issues → one message per field</span>
+  <span class="tok-key">const</span> errs = {};
+  <span class="tok-key">for</span> (<span class="tok-key">const</span> i <span class="tok-key">of</span> r.error.issues)
+    errs[i.path.join(<span class="tok-str">"."</span>)] ??= i.message;
 }</code></pre>
+  <div class="note"><span class="tag">gotchas</span> A field can have several issues (show the first). <code>path: []</code> = a whole-form error → <code>flattenError.formErrors</code>. <code>z.formatError</code> is deprecated → use <code>treeifyError</code>.</div>
 
   <div class="footer-nav">
-    <span><a href="../lessons/0001-one-schema-two-payoffs.html">← Lesson 1</a></span>
+    <span><a href="../lessons/0001-one-schema-two-payoffs.html">← L1</a> · <a href="../lessons/0002-coerce-preprocess-transform.html">L2</a> · <a href="../lessons/0003-per-field-errors.html">L3</a></span>
     <span class="ask">Something here out of date or unclear? Ask your teacher.</span>
   </div>
 </div>

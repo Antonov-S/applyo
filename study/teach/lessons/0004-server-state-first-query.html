@@ -1,0 +1,187 @@
+<title>TanStack Query · Lesson 1 · Server state, and your first query</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap">
+  <p class="eyebrow">Applyo · TanStack Query · Lesson 1</p>
+  <h1>Server state, and your first query</h1>
+  <p class="lede">TanStack Query is not a nicer <code>fetch()</code>. It's a <em>cache</em> that holds a copy of data the server owns, and tells you when your copy has gone stale. Wire one real query against your opportunities and you get loading, errors, caching, request dedup, and background refresh — without writing any of it.</p>
+
+  <p>You've written a <code>useQuery</code> before, so this lesson skips "what's a hook." It spends its budget on the two ideas that separate <em>copying</em> a <code>useQuery</code> from <em>understanding</em> one: why server data is a different kind of state, and why the <code>queryKey</code> is the whole trick.</p>
+
+  <h2>Why not <code>useState</code> + <code>useEffect</code>?</h2>
+  <p>Here's the opportunities list fetched by hand — the version you'd otherwise write:</p>
+<pre><code><span class="tok-key">const</span> [data, setData] = useState&lt;Opportunity[]&gt;([]);
+<span class="tok-key">const</span> [loading, setLoading] = useState(<span class="tok-key">true</span>);
+<span class="tok-key">const</span> [error, setError] = useState(<span class="tok-key">null</span>);
+
+useEffect(() =&gt; {
+  fetch(<span class="tok-str">"/api/opportunities"</span>)
+    .then(r =&gt; r.json())
+    .then(setData)
+    .catch(setError)
+    .finally(() =&gt; setLoading(<span class="tok-key">false</span>));
+}, []); <span class="tok-com">// runs once per mount — per component, every time</span></code></pre>
+  <p>It looks fine. What's missing is everything that makes it <em>correct</em>: two components that both need opportunities fire two requests (no <strong>dedup</strong>); the data is thrown away and refetched on every mount (no <strong>cache</strong>); a fast-then-slow response can overwrite fresh data with stale (a <strong>race</strong>); and nothing ever refreshes it after the first load (no <strong>background update</strong>). You <em>can</em> hand-code all four. TanStack Query is the library that already did.</p>
+
+  <h2>The shift: server state ≠ client state</h2>
+  <p>This is the mental model the whole library hangs on. There are two kinds of state, and you've been treating them the same:</p>
+  <div class="pipeline">
+    <div class="stage before"><span class="lbl">Client state</span>You own it. A modal's open flag, the filter you typed, form input. It's true the instant you set it.</div>
+    <div class="stage after"><span class="lbl">Server state</span>You borrow it. The opportunities row in Postgres. You hold a <em>copy</em>; the real thing lives elsewhere and can change without telling you.</div>
+  </div>
+  <p>Client state (<code>useState</code>, Zustand, Redux) is happy because you're the source of truth. Server state is <em>"totally different"</em> (<a href="https://tanstack.com/query/latest/docs/framework/react/overview" target="_blank" rel="noopener">TanStack docs</a>): it lives remotely, changes without your knowledge, and goes <strong>stale</strong> if you neglect it. That's why the maintainer calls TanStack Query not a data-fetching library but an <em>"async state manager"</em> (<a href="https://tkdodo.eu/blog/react-query-as-a-state-manager" target="_blank" rel="noopener">TkDodo</a>) — its job is keeping your borrowed copy usefully in sync.</p>
+
+  <div class="aha">
+    <span class="tag">The reframe in one line</span>
+    You're not <em>fetching</em> your opportunities — you're <strong>caching a copy of server-owned data</strong> and letting the library decide when the copy is stale enough to refetch. Fetching is an implementation detail of that job.
+  </div>
+
+  <div class="quiz" id="q1">
+    <p class="q">1. In Applyo, which of these is <em>server</em> state?</p>
+    <div class="opts">
+      <button class="opt" data-ok="0">The status filter dropdown value</button>
+      <button class="opt" data-ok="1">The saved opportunities list itself</button>
+      <button class="opt" data-ok="0">Whether the add form is open</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Anatomy of a query</h2>
+  <p>The v5 hook takes a single object. Two fields carry the whole idea:</p>
+<pre><code><span class="tok-key">const</span> { data, isPending, isError, error } = useQuery({
+  queryKey: [<span class="tok-str">"opportunities"</span>],          <span class="tok-com">// the cache ADDRESS</span>
+  queryFn: fetchOpportunities,           <span class="tok-com">// returns a Promise, THROWS on failure</span>
+});</code></pre>
+  <p><strong><code>queryKey</code> — the cache address.</strong> This is the trick, not decoration. The key uniquely identifies this data in the cache. Call <code>useQuery</code> with the same key anywhere in the tree and you get the <em>same</em> cached data, one shared request — that's where dedup, caching, and "refetch this exact thing" all come from (<a href="https://tanstack.com/query/latest/docs/framework/react/guides/query-keys" target="_blank" rel="noopener">Query Keys</a>). Later, <code>["opportunities", { status: "saved" }]</code> becomes a <em>different</em> address — a different cache entry — which is how filtered lists will just work.</p>
+  <p><strong><code>queryFn</code> — returns a Promise, and must <em>throw</em> on failure.</strong> Here's the gotcha that bites everyone: <code>fetch()</code> does <em>not</em> reject on a 404 or 500. If your <code>queryFn</code> doesn't check <code>res.ok</code> and throw, TanStack Query thinks a failed request <em>succeeded</em> and you never reach the error state:</p>
+<pre><code><span class="tok-key">async function</span> fetchOpportunities(): Promise&lt;Opportunity[]&gt; {
+  <span class="tok-key">const</span> res = <span class="tok-key">await</span> fetch(<span class="tok-str">"/api/opportunities"</span>);
+  <span class="tok-key">if</span> (!res.ok) <span class="tok-key">throw new</span> Error(<span class="tok-str">"Failed to load opportunities"</span>); <span class="tok-com">// ← without this, no error state</span>
+  <span class="tok-key">return</span> res.json();
+}</code></pre>
+
+  <div class="quiz" id="q2">
+    <p class="q">2. What is the <code>queryKey</code> primarily for?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Uniquely identifies data in cache</button>
+      <button class="opt" data-ok="0">Passes arguments to the queryFn</button>
+      <button class="opt" data-ok="0">Controls how often it refetches</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Reading the result: two questions, not one</h2>
+  <p>A query answers <em>two independent</em> questions, and mixing them up is the classic "used it lightly" bug. Straight from the <a href="https://tanstack.com/query/latest/docs/framework/react/guides/queries" target="_blank" rel="noopener">docs</a>:</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Field</th><th>Question it answers</th><th>Values</th></tr></thead>
+    <tbody>
+      <tr><td><code>status</code></td><td>Do we have <strong>data</strong> yet?</td><td><code>pending</code> · <code>error</code> · <code>success</code></td></tr>
+      <tr><td><code>fetchStatus</code></td><td>Is the <strong>queryFn</strong> running?</td><td><code>fetching</code> · <code>paused</code> · <code>idle</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The booleans you'll actually branch on: <code>isPending</code> (<code>status === "pending"</code> — no data yet, show a skeleton), <code>isError</code> (show <code>error.message</code>), <code>isSuccess</code> (render <code>data</code>). Separately, <code>isFetching</code> is true whenever the <code>queryFn</code> runs — <em>including a background refetch while old data is still on screen</em>. That split is the point: on a background refresh you keep showing cached opportunities (<code>isPending</code> is <code>false</code>, you have data) while <code>isFetching</code> quietly powers a little spinner.</p>
+
+  <div class="note">
+    <span class="tag">v5 naming — so old tutorials don't trip you</span>
+    In v5 the "no data yet" flag is <code>isPending</code> (v4 called it <code>isLoading</code>). <code>isLoading</code> still exists but now means <code>isPending &amp;&amp; isFetching</code> — the <em>first</em> load specifically. Reach for <code>isPending</code> for "do I have data?" and you'll be right.
+  </div>
+
+  <div class="quiz" id="q3">
+    <p class="q">3. Which question does <code>fetchStatus</code> answer?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Is the queryFn running now?</button>
+      <button class="opt" data-ok="0">Do we have data yet?</button>
+      <button class="opt" data-ok="0">Did the last fetch fail?</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Your win for today</h2>
+  <p>A real query in Applyo, reading real (mock) opportunities. The <strong>provider is boilerplate</strong> (infra — take it as given); the <strong>query and the states are yours</strong> to write. I review after.</p>
+
+  <h3>Given to you — the provider (App Router gotcha baked in)</h3>
+  <p>The <code>QueryClient</code> must be created <em>once per client</em>, not at module top-level (on the server that one instance would leak cache across requests/users). <code>useState</code> pins it. The provider is a Client Component:</p>
+<pre><code><span class="tok-com">// src/app/providers.tsx</span>
+<span class="tok-str">"use client"</span>;
+<span class="tok-key">import</span> { QueryClient, QueryClientProvider } <span class="tok-key">from</span> <span class="tok-str">"@tanstack/react-query"</span>;
+<span class="tok-key">import</span> { useState } <span class="tok-key">from</span> <span class="tok-str">"react"</span>;
+
+<span class="tok-key">export default function</span> Providers({ children }: { children: React.ReactNode }) {
+  <span class="tok-key">const</span> [client] = useState(() =&gt; <span class="tok-key">new</span> QueryClient());
+  <span class="tok-key">return</span> &lt;QueryClientProvider client={client}&gt;{children}&lt;/QueryClientProvider&gt;;
+}</code></pre>
+  <p class="small">Then wrap <code>{children}</code> with <code>&lt;Providers&gt;</code> in <code>src/app/layout.tsx</code>. <code>useQuery</code> only works <em>inside</em> a Client Component under this provider.</p>
+
+  <h3>Yours to build</h3>
+  <ol>
+    <li><code>npm i @tanstack/react-query</code>. (Optional but recommended: <code>@tanstack/react-query-devtools</code> — a panel that shows the cache live.)</li>
+    <li>Drop in the provider above and wrap the layout.</li>
+    <li>Write the <strong>Route Handler</strong> <code>src/app/api/opportunities/route.ts</code> — a <code>GET</code> returning <code>NextResponse.json(MOCK)</code>, where <code>MOCK: Opportunity[]</code> is 2–3 hand-written opportunities. <em>Type the array with your own <code>Opportunity</code> from <code>@/lib/schemas/opportunity</code></em> — TypeScript will make you fill every required field, which is the point.</li>
+    <li>Write <code>fetchOpportunities</code> (with the <code>res.ok</code> throw) and a Client Component that calls <code>useQuery</code> and renders <strong>all three states</strong>: pending → "Loading…", error → <code>error.message</code>, success → the list of titles.</li>
+    <li>Prove the shared cache — <strong>in one tab</strong>: render your list component <em>twice</em> on the same page (same <code>queryKey: ["opportunities"]</code>). Watch the Network panel — you'll see <strong>one</strong> request, not two. Both components read the same cache entry; the <code>queryKey</code> is acting as a shared address. <em>Why not two tabs?</em> Each tab is a separate document with its own <code>new QueryClient()</code> and its own in-memory cache — nothing is shared across tabs. The cache lives in one JS runtime.</li>
+  </ol>
+  <p class="small">Want the "second mount serves from cache" version instead? Add a second route, put a <code>&lt;Link&gt;</code> between them, and navigate <em>away and back</em> in the same tab — the <code>QueryClient</code> survives client navigation, so no refetch fires within the default stale window. (That window is Lesson 2.)</p>
+  <p class="small">DoD: it runs, types/lint pass, committed, 2–3 line journal note (what clicked, what's still fuzzy). Then paste your <code>queryFn</code> + component and I'll review.</p>
+
+  <details class="reveal">
+    <summary>Self-test before Lesson 2</summary>
+    <p>From memory:</p>
+    <ul>
+      <li>Name one thing <code>useState</code> + <code>useEffect</code> fetching lacks that <code>useQuery</code> gives free.</li>
+      <li>What's the difference between client state and server state — one sentence each?</li>
+      <li>What does the <code>queryKey</code> identify, and what happens if two components use the same key?</li>
+      <li>Why must the <code>queryFn</code> <code>throw</code> on a bad response?</li>
+      <li><code>status</code> vs <code>fetchStatus</code>: which question does each answer?</li>
+    </ul>
+    <p>Fuzzy on any? That's your next question for me.</p>
+  </details>
+
+  <div class="aha">
+    <span class="tag">Interview-ready sentence</span>
+    "TanStack Query is an async <em>server-state</em> manager, not a fetch wrapper. Each query has a <code>queryKey</code> that addresses its data in a shared cache — so identical keys dedupe and share one request — and a <code>queryFn</code> that returns a Promise and throws on failure. I read <code>status</code> (<code>pending</code>/<code>error</code>/<code>success</code>) for whether I have data, and <code>fetchStatus</code> separately for whether it's currently fetching, which is how background refetches keep stale data on screen."
+  </div>
+
+  <h2>Keep going</h2>
+  <p><strong>Primary source (read this next):</strong> <a href="https://tkdodo.eu/blog/react-query-as-a-state-manager" target="_blank" rel="noopener">TkDodo — "React Query as a State Manager"</a>. The maintainer's own framing of the server-state idea; short and the highest-trust piece on <em>why</em>. Pair it with the <a href="https://tanstack.com/query/latest/docs/framework/react/overview" target="_blank" rel="noopener">official Overview</a> for the <em>what</em>.</p>
+  <p><strong>Reference:</strong> the new <a href="../reference/tanstack-query-cheatsheet.html">TanStack Query cheat sheet</a> — <code>useQuery</code> anatomy, the <code>status</code>/<code>fetchStatus</code> table, and the App Router provider snippet on one page.</p>
+  <p><strong>Next lesson:</strong> <code>staleTime</code> &amp; the fresh → stale → refetch model — the one knob that controls all those "free" background updates, and how to stop fighting the defaults. Lesson 2, when you're ready.</p>
+
+  <div class="footer-nav">
+    <span><a href="../reference/tanstack-query-cheatsheet.html">Cheat sheet →</a></span>
+    <span class="ask">I'm your teacher — ask me anything unclear, or paste your <code>queryFn</code> + component for review.</span>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var fb = quiz.querySelector('.feedback');
+    var msgs = {
+      q1: {
+        ok: "Right. The opportunities list lives in the database — you hold a <em>copy</em>, and it can change without your React app knowing. That's server state, and it's exactly what <code>useQuery</code> manages.",
+        no: "That's <em>client</em> state — you own it and it's true the instant you set it, so plain <code>useState</code> is the right tool. Server state is the data that lives remotely (the opportunities list) and can go stale."
+      },
+      q2: {
+        ok: "Exactly. The <code>queryKey</code> is the cache address: same key anywhere in the tree ⇒ same cached data and one shared request. Dedup, caching, and targeted refetch all hang off it.",
+        no: "Not primarily. Arguments live inside the <code>queryFn</code>, and refetch frequency is <code>staleTime</code> (Lesson 2). The <code>queryKey</code>'s core job is to <em>identify</em> this data in the cache — its address."
+      },
+      q3: {
+        ok: "Yes. <code>fetchStatus</code> is about the <em>queryFn</em>: is it running (<code>fetching</code>), paused, or idle? Separately, <code>status</code> is about the <em>data</em>. Two independent questions — that's the whole point of the split.",
+        no: "That's <code>status</code>'s job (do we have data — <code>pending</code>/<code>success</code>) or <code>isError</code>'s. <code>fetchStatus</code> answers a different question: is the <code>queryFn</code> running right now? It's how a background refetch shows a spinner over cached data."
+      }
+    };
+    quiz.querySelectorAll('.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.dataset.ok === "1";
+        quiz.querySelectorAll('.opt').forEach(function (b) {
+          b.disabled = true;
+          if (b.dataset.ok === "1") b.classList.add('correct');
+        });
+        if (!correct) btn.classList.add('wrong');
+        fb.innerHTML = correct ? msgs[quiz.id].ok : msgs[quiz.id].no;
+        fb.className = 'feedback show ' + (correct ? 'ok' : 'no');
+      });
+    });
+  });
+</script>

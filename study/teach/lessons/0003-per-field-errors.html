@@ -1,0 +1,180 @@
+<title>Lesson 3 · From ZodError to the input that's wrong</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap">
+  <p class="eyebrow">Applyo · Zod course · Lesson 3</p>
+  <h1>Per-field errors</h1>
+  <p class="lede">A failed <code>safeParse</code> hands you a <code>ZodError</code>. Your form needs "put <em>this</em> message under <em>that</em> input." This lesson is the bridge between the two — and it's the direct payoff of the <code>path</code> you already wrote in your salary refines.</p>
+
+  <p>You've had the failure branch since Lesson 1: <code>if (!result.success) { result.error }</code>. Today is what you <em>do</em> with <code>result.error</code> — turn one <code>ZodError</code> into messages addressed to individual fields.</p>
+
+  <h2>The raw material: <code>error.issues</code></h2>
+  <p>Every <code>ZodError</code> carries a flat array of <strong>issues</strong>. Each issue has a <code>message</code> and — the key part — a <code>path</code>: an array that is the <em>address</em> of the field that failed. Here's the <em>real</em> output (verified on your Zod 4.4.3) for a bad Opportunity:</p>
+
+<pre><code><span class="tok-com">// input: title "", sourceUrl "not-a-url",</span>
+<span class="tok-com">//        requiredTechnologies ["React", ""], salaryRange { min: 100, max: 50 }</span>
+result.error.issues <span class="tok-com">// ⇒</span>
+[
+  { code: <span class="tok-str">"too_small"</span>,      path: [<span class="tok-str">"title"</span>],                    message: <span class="tok-str">"Title is required"</span> },
+  { code: <span class="tok-str">"invalid_format"</span>, path: [<span class="tok-str">"sourceUrl"</span>],                message: <span class="tok-str">"Invalid URL"</span> },
+  { code: <span class="tok-str">"too_small"</span>,      path: [<span class="tok-str">"requiredTechnologies"</span>, <span class="tok-str">1</span>],   message: <span class="tok-str">"empty tech"</span> },
+  { code: <span class="tok-str">"custom"</span>,         path: [<span class="tok-str">"salaryRange"</span>, <span class="tok-str">"max"</span>],       message: <span class="tok-str">"min must be ≤ max"</span> },
+]</code></pre>
+
+  <div class="aha">
+    <span class="tag">The whole idea in one line</span>
+    <code>path</code> is the field's address. <code>["salaryRange", "max"]</code> means <em>the <code>max</code> inside <code>salaryRange</code></em>; <code>["requiredTechnologies", 1]</code> means <em>the item at index 1</em>. Join it (<code>path.join(".")</code>) and you have a key you can match against an input. <strong>That <code>path: ["max"]</code> you wrote in your salary <code>.refine()</code> in Lesson 2? This is what it was for.</strong>
+  </div>
+
+  <div class="quiz" id="q1">
+    <p class="q">1. The 2nd item in <code>requiredTechnologies</code> is empty. What is that issue's <code>path</code>?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">The array key, then index 1</button>
+      <button class="opt" data-ok="0">The array key, then index 2</button>
+      <button class="opt" data-ok="0">The array key, as one string</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Three ways to shape it — matched to the form</h2>
+  <p>You rarely render the raw <code>issues</code> array. Zod v4 gives two reshapers on top of it, and you choose by the <em>shape of your form</em> (<a href="https://zod.dev/error-formatting" target="_blank" rel="noopener">docs: Formatting errors</a>):</p>
+
+  <h3>a. <code>z.flattenError</code> — flat forms, one call</h3>
+  <p>For a form of top-level fields, this is the quick win: a <code>fieldErrors</code> object keyed by field name, each an array of messages.</p>
+<pre><code>z.flattenError(result.error) <span class="tok-com">// ⇒</span>
+{
+  formErrors: [],
+  fieldErrors: {
+    title:                [<span class="tok-str">"Title is required"</span>],
+    sourceUrl:            [<span class="tok-str">"Invalid URL"</span>],
+    requiredTechnologies: [<span class="tok-str">"empty tech"</span>],     <span class="tok-com">// ⚠️ which index? lost.</span>
+    salaryRange:          [<span class="tok-str">"min must be ≤ max"</span>], <span class="tok-com">// ⚠️ which sub-field? lost.</span>
+  }
+}</code></pre>
+  <div class="warn">
+    <span class="tag">flatten's limit — and why it matters for your form</span>
+    <code>flattenError</code> only keeps the <strong>first</strong> path segment. Your nested <code>salaryRange.max</code> and your array item <code>requiredTechnologies[1]</code> both collapse onto their top-level key — you can't tell the user <em>which</em> sub-field or <em>which</em> row is wrong. Fine for <code>title</code>/<code>company</code>; not enough for salary or the tech list.</p>
+  </div>
+
+  <h3>b. <code>z.treeifyError</code> — nested objects &amp; arrays</h3>
+  <p>When the form has nesting (your <code>salaryRange</code>) or lists (your <code>requiredTechnologies</code>), this mirrors the schema's shape so each sub-field keeps its own <code>errors</code>:</p>
+<pre><code>z.treeifyError(result.error) <span class="tok-com">// ⇒</span>
+{
+  properties: {
+    title:       { errors: [<span class="tok-str">"Title is required"</span>] },
+    requiredTechnologies: {
+      errors: [],
+      items: [ <span class="tok-key">null</span>, { errors: [<span class="tok-str">"empty tech"</span>] } ]  <span class="tok-com">// null = item 0 is fine</span>
+    },
+    salaryRange: {
+      properties: { max: { errors: [<span class="tok-str">"min must be ≤ max"</span>] } }
+    }
+  }
+}</code></pre>
+  <p class="small">Read it like the schema: <code>.properties.&lt;field&gt;</code> for object keys, <code>.items[i]</code> for array elements (<code>null</code> where that element passed), <code>.errors</code> for the messages at that node.</p>
+
+  <div class="quiz" id="q2">
+    <p class="q">2. Your <code>salaryRange.max</code> error must show under the max input. Which helper keeps that detail?</p>
+    <div class="opts">
+      <button class="opt" data-ok="0">flattenError — top level only</button>
+      <button class="opt" data-ok="1">treeifyError — mirrors the nesting</button>
+      <button class="opt" data-ok="0">prettifyError — one readable dump</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>c. Or map <code>issues</code> yourself — the most control</h2>
+  <p>Neither helper is magic; both are built from <code>issues</code>. For a form, a tiny hand-rolled map is often the clearest thing — one message per field, keyed by the joined path:</p>
+<pre><code><span class="tok-key">function</span> toFieldErrors(error) {
+  <span class="tok-key">const</span> out = {};
+  <span class="tok-key">for</span> (<span class="tok-key">const</span> issue <span class="tok-key">of</span> error.issues) {
+    <span class="tok-key">const</span> key = issue.path.join(<span class="tok-str">"."</span>);   <span class="tok-com">// "salaryRange.max", "requiredTechnologies.1"</span>
+    <span class="tok-key">if</span> (!(key <span class="tok-key">in</span> out)) out[key] = issue.message; <span class="tok-com">// keep the FIRST message per field</span>
+  }
+  <span class="tok-key">return</span> out; <span class="tok-com">// { title: "Title is required", "salaryRange.max": "min must be ≤ max", ... }</span>
+}</code></pre>
+
+  <div class="note">
+    <span class="tag">Two gotchas worth knowing now</span>
+    <strong>1. A field can have several issues.</strong> <code>issues</code> may hold more than one entry for the same <code>path</code>; forms usually show the first, hence the <code>if (!(key in out))</code> guard. <strong>2. <code>path: []</code> is a whole-form error.</strong> A <code>.refine()</code> with no <code>path</code> attaches to the object root — that's <code>flattenError</code>'s <code>formErrors</code> (a form-level banner, not a field message).
+  </div>
+
+  <div class="quiz" id="q3">
+    <p class="q">3. You want the shortest path to messages for a purely flat form (title, company, notes). Reach for:</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">flatten, read the fieldErrors</button>
+      <button class="opt" data-ok="0">treeify, walk the properties</button>
+      <button class="opt" data-ok="0">prettify, parse the printout</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Your win for today</h2>
+  <p>Write the bridge once, prove it on your real schema. You implement — I review after:</p>
+  <ol>
+    <li>In a scratch file, import your <code>OpportunitySchema</code> and <code>safeParse</code> a deliberately <em>bad</em> object (empty title, bad URL, <code>min &gt; max</code>, an empty tech string).</li>
+    <li>Write <code>toFieldErrors(error): Record&lt;string, string&gt;</code> — first message per <code>path.join(".")</code>, as above. Type the parameter as <code>z.ZodError</code>.</li>
+    <li><code>console.log</code> the result. Confirm you see <code>"salaryRange.max"</code> and <code>"requiredTechnologies.1"</code> as keys — proof the nested/array paths survived.</li>
+    <li>Then call <code>z.flattenError</code> on the same error and eyeball what got <em>lost</em>. That contrast is the lesson.</li>
+  </ol>
+  <p class="small">Spike rules: scratch file, delete or commit-as-spike after, learning note required. If <code>toFieldErrors</code> feels right, it's a genuine keeper for <code>src/lib/</code> — we'll wire it into the real form when the form-library lesson lands.</p>
+
+  <details class="reveal">
+    <summary>Self-test before Lesson 4</summary>
+    <p>From memory:</p>
+    <ul>
+      <li>What two things does every <em>issue</em> carry, and which one addresses the field?</li>
+      <li>What does <code>flattenError</code> throw away that <code>treeifyError</code> keeps?</li>
+      <li>Given <code>path: ["salaryRange", "max"]</code>, what key does <code>path.join(".")</code> produce?</li>
+      <li>What does an issue with <code>path: []</code> represent?</li>
+    </ul>
+    <p>Shaky on any? That's your next question for me.</p>
+  </details>
+
+  <div class="aha">
+    <span class="tag">Interview-ready sentence</span>
+    "On a failed <code>safeParse</code> I read <code>error.issues</code> — each has a <code>path</code> addressing the field and a <code>message</code>. For a flat form <code>z.flattenError</code> gives me <code>fieldErrors</code> directly; for nested objects or arrays I use <code>z.treeifyError</code> or map the issues myself by <code>path.join('.')</code>, because flatten collapses nested paths onto the top-level key."
+  </div>
+
+  <h2>Keep going</h2>
+  <p><strong>Primary source (read this next):</strong> <a href="https://zod.dev/error-formatting" target="_blank" rel="noopener">Zod docs — Formatting errors</a>. Short; it's the v4 page for <code>treeifyError</code> / <code>flattenError</code> / <code>prettifyError</code> (and notes <code>formatError</code> is deprecated).</p>
+  <p><strong>Reference:</strong> the <a href="../reference/zod-cheatsheet.html">cheat sheet</a>'s "Reading errors" section now has all three helpers side by side.</p>
+  <p><strong>Next lesson:</strong> cross-field rules with <code>.refine()</code> — deepening the salary and date checks you already wrote (<code>refine</code> vs <code>superRefine</code>, choosing <code>path</code>, when a refine should be a <code>.pipe()</code> instead). Lesson 4, when you're ready.</p>
+
+  <div class="footer-nav">
+    <span><a href="0002-coerce-preprocess-transform.html">← Lesson 2</a> · <a href="../reference/zod-cheatsheet.html">Cheat sheet →</a></span>
+    <span class="ask">I'm your teacher — ask me anything unclear, or paste your <code>toFieldErrors</code> for review.</span>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var fb = quiz.querySelector('.feedback');
+    var msgs = {
+      q1: {
+        ok: "Right. Array paths use a numeric index, and it's zero-based — so the second item is index <code>1</code>: <code>[\"requiredTechnologies\", 1]</code>. Joined, that's <code>requiredTechnologies.1</code>.",
+        no: "Not quite. The <code>path</code> is an <em>array</em> of segments — the field key <em>and</em> a zero-based index — <code>[\"requiredTechnologies\", 1]</code>, not a single string, and the second item is index <code>1</code>, not <code>2</code>."
+      },
+      q2: {
+        ok: "Exactly. <code>treeifyError</code> mirrors the schema's shape — <code>properties.salaryRange.properties.max.errors</code> — so the message stays attached to the exact sub-field.",
+        no: "Not that one. <code>flattenError</code> keeps only the first path segment, collapsing <code>salaryRange.max</code> onto <code>salaryRange</code>; <code>prettifyError</code> is a single string. <code>treeifyError</code> is the one that preserves nesting."
+      },
+      q3: {
+        ok: "Yes. For a flat form <code>flattenError</code> is the least code: <code>fieldErrors.title</code>, <code>fieldErrors.company</code> — each a ready array of messages. Its nesting limit doesn't bite when nothing is nested.",
+        no: "Overkill. With no nesting, <code>treeifyError</code>'s tree and <code>prettifyError</code>'s string are more work to consume. <code>flattenError</code>'s <code>fieldErrors</code> map is the direct hit for a flat form."
+      }
+    };
+    quiz.querySelectorAll('.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.dataset.ok === "1";
+        quiz.querySelectorAll('.opt').forEach(function (b) {
+          b.disabled = true;
+          if (b.dataset.ok === "1") b.classList.add('correct');
+        });
+        if (!correct) btn.classList.add('wrong');
+        fb.innerHTML = correct ? msgs[quiz.id].ok : msgs[quiz.id].no;
+        fb.className = 'feedback show ' + (correct ? 'ok' : 'no');
+      });
+    });
+  });
+</script>

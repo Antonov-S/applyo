@@ -1,0 +1,178 @@
+<title>Lesson 2 · Coerce, preprocess, transform — where each runs</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap">
+  <p class="eyebrow">Applyo · Zod course · Lesson 2</p>
+  <h1>Coerce, preprocess, transform</h1>
+  <p class="lede">You already reached for <code>z.preprocess</code> in your salary schema — and, it turns out, for exactly the right reason. This lesson makes that instinct explicit: three tools that reshape data, told apart by <em>one</em> question — where do they run relative to validation?</p>
+
+  <p>This is <strong>your</strong> question from last session — "when do I use <code>z.preprocess</code> vs <code>z.coerce</code> vs <code>.transform()</code>?" It's the right seam to press on, because all three <em>look</em> interchangeable and are not. Once you see the pipeline, the choice stops being a guess.</p>
+
+  <h2>The mental model: a schema is a pipeline with a gate</h2>
+  <p>Every Zod schema runs raw input through a <strong>validation gate</strong>. Some tools massage the value <em>before</em> the gate; one reshapes it <em>after</em>. That's the whole distinction.</p>
+
+  <div class="pipeline">
+    <div class="stage before"><span class="lbl">Before the gate</span><code>z.coerce</code> · <code>z.preprocess</code> — massage raw input</div>
+    <span class="arrow">→</span>
+    <div class="stage gate">VALIDATE ✓/✗</div>
+    <span class="arrow">→</span>
+    <div class="stage after"><span class="lbl">After the gate</span><code>.transform()</code> — reshape a value already known valid</div>
+  </div>
+
+  <div class="scroll"><table>
+    <tr><th>Tool</th><th>Runs</th><th>Sees</th><th>Job</th></tr>
+    <tr><td><code>z.coerce.X()</code></td><td>before gate</td><td>raw input</td><td>built-in JS conversion (<code>Number()</code>, <code>new Date()</code>…)</td></tr>
+    <tr><td><code>z.preprocess(fn, S)</code></td><td>before gate</td><td>raw input</td><td><em>your</em> function massages input, then <code>S</code> validates it</td></tr>
+    <tr><td><code>.transform(fn)</code></td><td>after gate</td><td>valid, typed value</td><td>reshape / derive the <em>output</em> (can change its type)</td></tr>
+    <tr><td><code>A.pipe(B)</code></td><td>gate → gate</td><td><code>A</code>'s output</td><td>validate with <code>A</code>, hand the result to <code>B</code> to validate again</td></tr>
+  </table></div>
+
+  <div class="aha">
+    <span class="tag">The one-line test</span>
+    Ask: <strong>"Is my value valid <em>yet</em>?"</strong> If you're fixing input so it <em>can</em> pass → that's a <em>before</em> tool (<code>coerce</code> or <code>preprocess</code>). If you're reshaping something that <em>already</em> passed → that's <code>.transform()</code>, <em>after</em>.
+  </div>
+
+  <h2>coerce vs preprocess — the empty-string trap (your salary field)</h2>
+  <p>Here's the choice you actually made. Both fill a number from a form field. Watch what each does with an <strong>empty</strong> salary input — the common case, since most vacancies list no salary:</p>
+
+<pre><code><span class="tok-com">// The tempting one-liner</span>
+z.coerce.number().optional()
+
+<span class="tok-com">// What it really produces (verified on your Zod 4.4.3):</span>
+<span class="tok-str">""</span>        <span class="tok-com">// → 0        ⚠️ a real salary of zero!</span>
+<span class="tok-str">null</span>      <span class="tok-com">// → 0        ⚠️</span>
+<span class="tok-key">undefined</span> <span class="tok-com">// → undefined ✅ (only this one)</span>
+<span class="tok-str">"5000"</span>    <span class="tok-com">// → 5000     ✅</span></code></pre>
+
+  <div class="warn">
+    <span class="tag">Why <code>.optional()</code> doesn't save you</span>
+    <code>.optional()</code> only lets <code>undefined</code> through untouched. An empty text input submits <code>""</code>, not <code>undefined</code> — so it sails past <code>optional</code> straight into <code>z.coerce.number()</code>, and <code>Number("")</code> is <code>0</code>. You'd silently store a €0 salary on every blank field.
+  </div>
+
+  <p>Your <code>optionalSalaryNumber</code> sidesteps this precisely — a <em>custom</em> before-step that maps every "empty" spelling to <code>undefined</code> <em>first</em>, then validates:</p>
+
+<pre><code><span class="tok-key">const</span> optionalSalaryNumber = z.preprocess(value => {
+  <span class="tok-key">if</span> (value === <span class="tok-str">""</span> || value === <span class="tok-key">null</span> || value === <span class="tok-key">undefined</span>) {
+    <span class="tok-key">return</span> <span class="tok-key">undefined</span>;           <span class="tok-com">// normalise empties BEFORE the gate</span>
+  }
+  <span class="tok-key">return</span> Number(value);
+}, z.number().nonnegative().optional());  <span class="tok-com">// then this validates</span>
+
+<span class="tok-com">// "" → undefined ✅   null → undefined ✅   "5000" → 5000 ✅</span></code></pre>
+
+  <p><code>z.coerce</code> is a fixed, dumb conversion — great when the built-in <code>Number()</code>/<code>Date()</code> behaviour is exactly what you want. The moment you need a <em>rule</em> about the raw input ("blank means absent"), you've outgrown coerce and want <code>preprocess</code>. You picked correctly.</p>
+
+  <div class="quiz" id="q1">
+    <p class="q">1. An empty text field submits <code>""</code> into <code>z.coerce.number().optional()</code>. What comes out?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Zero — the empty coerces</button>
+      <button class="opt" data-ok="0">Undefined — optional catches</button>
+      <button class="opt" data-ok="0">Failure — empties get rejected</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>transform — the tool that runs <em>after</em></h2>
+  <p>You've already used a transform without naming it: <code>.trim()</code> on <code>z.string().trim()</code> is a built-in transform. It doesn't <em>validate</em> — it edits the value on its way out. A hand-rolled one looks like this:</p>
+
+<pre><code>z.string().transform(s => s.length)   <span class="tok-com">// "hello" → 5</span>
+<span class="tok-com">// validates as a string FIRST, then the number falls out the far end</span></code></pre>
+
+  <p>Because transform runs on the far side of the gate, its function receives a value that is <em>already the right type</em> — no defensive <code>typeof</code> checks needed. That's the payoff of "after": you trade the ability to reject for a guarantee of validity.</p>
+
+  <div class="note">
+    <span class="tag">The type nuance worth planting (ties to your fuzzy-TS spot)</span>
+    Once a schema reshapes data, its <em>input</em> type and <em>output</em> type differ. <code>z.infer&lt;typeof S&gt;</code> gives the <strong>output</strong>; <code>z.input&lt;typeof S&gt;</code> gives what goes <em>in</em>. For your <code>optionalSalaryNumber</code>: input is <code>unknown</code>, output is <code>number | undefined</code>. That gap <em>is</em> the massaging, made visible in the types.
+  </div>
+
+  <div class="quiz" id="q2">
+    <p class="q">2. Where in the pipeline does <code>.transform()</code> run?</p>
+    <div class="opts">
+      <button class="opt" data-ok="0">Before the validation gate</button>
+      <button class="opt" data-ok="1">After the validation passes</button>
+      <button class="opt" data-ok="0">Instead of any validation</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz" id="q3">
+    <p class="q">3. Why did <code>preprocess</code> beat <code>coerce</code> for your salary number?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Empty inputs must become undefined</button>
+      <button class="opt" data-ok="0">Coerce cannot convert any strings</button>
+      <button class="opt" data-ok="0">Coerce always throws on emptiness</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Where <code>.pipe()</code> fits (you used this too)</h2>
+  <p>Your date fields do <code>z.string().min(1).pipe(z.iso.date(...))</code>. That's neither coerce nor transform — it's <strong>two gates in series</strong>: first validate "a non-empty string," then feed that string into a second schema that validates "a real ISO date." Reach for <code>pipe</code> when each step is itself a <em>schema</em>, not a plain function. Use <code>preprocess</code> when the first step is a plain function that just cleans input.</p>
+
+  <div class="aha">
+    <span class="tag">Interview-ready sentence</span>
+    "Coercion and preprocessing run <em>before</em> validation to make raw input parseable — <code>coerce</code> for the built-in JS conversions, <code>preprocess</code> when I need a custom rule like 'blank means undefined.' <code>.transform()</code> runs <em>after</em> validation to reshape a value I already know is valid, and it can change the output type — which is why <code>z.input</code> and <code>z.infer</code> can differ."
+  </div>
+
+  <h2>Your win for today</h2>
+  <p>No new feature — an <strong>audit of your own schema</strong>, which is pure retrieval practice on code you wrote:</p>
+  <ol>
+    <li>Open <code>src/lib/schemas/opportunity.ts</code>. For <em>each</em> data-massaging step — the two <code>z.preprocess</code> blocks, every <code>.trim()</code>, both <code>.pipe(z.iso.date())</code> — label it out loud: <em>coerce, preprocess, transform, or pipe?</em> and <em>before or after the gate?</em></li>
+    <li>Hover <code>optionalSalaryNumber</code> (or add <code>type _In = z.input&lt;typeof …&gt;</code> and <code>type _Out = z.infer&lt;typeof …&gt;</code> beside it) and confirm the input/output types actually differ.</li>
+    <li>One judgement call to write in <code>journal.md</code>: your <code>OptionalSalaryRangeSchema</code> is a <em>second</em> preprocess wrapping the first. Could <code>z.coerce</code> ever have done that job? Why not? (One sentence — this is the muscle we're building.)</li>
+  </ol>
+  <p class="small">This is a spike / review task: no tests, no new code required — just the <code>journal.md</code> note as your learning record. If you'd rather I review your labels afterwards, paste them to me.</p>
+
+  <details class="reveal">
+    <summary>Self-test before Lesson 3</summary>
+    <p>From memory, no peeking:</p>
+    <ul>
+      <li>Which two tools run <em>before</em> the validation gate, and which one runs <em>after</em>?</li>
+      <li>What does <code>z.coerce.number()</code> turn <code>""</code> into, and why is that a bug for a salary field?</li>
+      <li>When would you pick <code>preprocess</code> over <code>coerce</code>? Over <code>.pipe()</code>?</li>
+      <li>Why can <code>z.input&lt;typeof S&gt;</code> and <code>z.infer&lt;typeof S&gt;</code> disagree?</li>
+    </ul>
+    <p>Shaky on any of these? That's your next question for me — don't move on until they click.</p>
+  </details>
+
+  <h2>Keep going</h2>
+  <p><strong>Primary source (read this next):</strong> <a href="https://zod.dev/api#transforms" target="_blank" rel="noopener">Zod docs — Transforms, preprocess &amp; pipe</a>. Short, and it's the v4 wording that matches your code. Skim the "coerce" note on the same page for the built-in conversions.</p>
+  <p><strong>Reference:</strong> the <a href="../reference/zod-cheatsheet.html">Zod v4 cheat sheet</a> now has a "Massaging input" section — the same four tools in one table to grab mid-code.</p>
+  <p><strong>Next lesson:</strong> turning a failed <code>safeParse</code> into per-field messages in the UI — <code>error.issues</code>, <code>path</code>, and <code>z.treeifyError</code> (Lesson 3, when you're ready).</p>
+
+  <div class="footer-nav">
+    <span><a href="0001-one-schema-two-payoffs.html">← Lesson 1</a> · <a href="../reference/zod-cheatsheet.html">Cheat sheet →</a></span>
+    <span class="ask">I'm your teacher — ask me anything unclear, or paste your schema audit for review.</span>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var fb = quiz.querySelector('.feedback');
+    var msgs = {
+      q1: {
+        ok: "Right — and this is the trap. <code>Number(\"\")</code> is <code>0</code>, and <code>.optional()</code> only intercepts <code>undefined</code>, never <code>\"\"</code>. So a blank salary field silently stores <code>0</code>. That's exactly why your <code>preprocess</code> maps empties to <code>undefined</code> first.",
+        no: "Not quite. <code>.optional()</code> only lets <code>undefined</code> pass untouched — but a blank input is <code>\"\"</code>, which flows into <code>z.coerce.number()</code>, and <code>Number(\"\")</code> is <code>0</code>. It doesn't fail; it silently produces a zero salary."
+      },
+      q2: {
+        ok: "Exactly. <code>.transform()</code> runs on the far side of the gate, so its function receives an already-valid, already-typed value — it reshapes the output rather than deciding pass/fail.",
+        no: "Not quite. <code>coerce</code> and <code>preprocess</code> are the <em>before</em>-gate tools. <code>.transform()</code> runs <em>after</em> validation succeeds — that's why it can trust the value's type without defensive checks."
+      },
+      q3: {
+        ok: "Yes. The rule 'a blank field means no salary → undefined' isn't something <code>Number()</code> knows — <code>coerce</code> would make <code>\"\"</code> into <code>0</code>. A custom rule about raw input is precisely the <code>preprocess</code> signal.",
+        no: "Not the reason. <code>coerce</code> converts strings fine (<code>\"5000\"</code>→<code>5000</code>) and never throws — it just gives the <em>wrong</em> answer for blanks (<code>\"\"</code>→<code>0</code>). You needed a custom rule mapping empties to <code>undefined</code>, which is <code>preprocess</code>'s job."
+      }
+    };
+    quiz.querySelectorAll('.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.dataset.ok === "1";
+        quiz.querySelectorAll('.opt').forEach(function (b) {
+          b.disabled = true;
+          if (b.dataset.ok === "1") b.classList.add('correct');
+        });
+        if (!correct) btn.classList.add('wrong');
+        fb.innerHTML = correct ? msgs[quiz.id].ok : msgs[quiz.id].no;
+        fb.className = 'feedback show ' + (correct ? 'ok' : 'no');
+      });
+    });
+  });
+</script>
