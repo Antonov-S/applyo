@@ -36,3 +36,69 @@
 ## 2026-07-18 — TanStack Query: Lesson 1
 
 - none
+
+## 2026-07-18 — TanStack Query: Lesson 2 warm up
+
+### TypeScript: `interface` vs `type` — intersection and union
+
+**Mistake:**
+I said that a `type` cannot be extended and that types can be combined using a union (`|`).
+
+**Correction:**
+A type alias can compose or extend an object shape using an intersection (`&`):
+
+```ts
+type A = { id: number };
+type B = A & { name: string };
+```
+
+`B` must contain both `id` and `name`.
+
+A union (`|`) does not extend or merge object shapes. It represents alternatives — `A` or `B`:
+
+```ts
+type Result = { data: string } | { error: string };
+```
+
+**Rule to remember:**
+
+```ts
+A & B; // A and B
+A | B; // A or B
+```
+
+Interfaces compose through `extends`, while type aliases usually compose object shapes through intersections using `&`.
+
+Interfaces and types can also interoperate:
+
+```ts
+type HasId = { id: number };
+
+interface User extends HasId {
+  name: string;
+}
+```
+
+```ts
+interface HasId {
+  id: number;
+}
+
+type User = HasId & {
+  name: string;
+};
+```
+
+## 2026-07-19 — TanStack Query: Lesson 2
+
+**Mistake:** Data is still fresh. A second component mounts with the same key. What happens? — I answered "a single background refetch is fired".
+
+**Correction:** Not while it's fresh. A refetch trigger (mount/focus/reconnect) only actually fetches if the data is already stale. Fresh data is served straight from cache with zero requests — that's the whole point of staleTime.
+
+## 2026-07-20 — no session (missed)
+
+## 2026-07-21 — TanStack Query: Lesson 3 warm up
+
+**Mistake:** I said the boundary is drawn simply at the file level and that React uses the import tree rather than the render tree. This was too absolute and did not clearly explain what happens during rendering.
+
+**Correction:** "use client" creates a client entry point in the module dependency graph. That file and the modules it imports become part of the client bundle, but this does not propagate upward to the Server Component that imports it. The parent still renders on the server, while the RSC payload contains a reference to the Client Component, which is then hydrated in the browser.

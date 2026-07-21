@@ -7,7 +7,8 @@ import { fetchOpportunities } from "@/lib/api/opportunities";
 export default function OpportunitiesList() {
   const { data, isPending, isError, error, isFetching } = useQuery({
     queryKey: ["opportunities"],
-    queryFn: fetchOpportunities
+    queryFn: fetchOpportunities,
+    staleTime: 20_000
   });
 
   if (isPending) {

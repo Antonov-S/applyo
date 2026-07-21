@@ -36,7 +36,14 @@
    `queryFn` throw rule, `status` vs `fetchStatus`; App Router provider given, they build the
    route + query + 3 states. ← TQ Lesson 1 (file 0004) ✅ delivered.
 2. **`staleTime` & the fresh→stale→refetch model** — the one knob; stop fighting defaults.
-   Anchor in the two-tab cache proof from L1. Primary source: TkDodo state-manager post.
+   Anchored in L1's "navigate away & back, no refetch within stale window" cliffhanger.
+   ← TQ Lesson 2 (file `0005`) ✅ delivered (2026-07-19, bonus weekend session). Recalibrated
+   UP: L1 shipped clean (no mistakes logged, strong journal note on status/fetchStatus) so L2
+   pitches cache internals harder — fresh/stale as *trust*, the `staleTime` vs `gcTime` two-clocks
+   split, and *why* the default 0 refetches so eagerly. Harvested both planted seeds:
+   `isPending`/`isFetching` reused as the "background refetch doesn't blank the list" payoff, and
+   Devtools used as the live fresh/stale instrument. Verify signal: their answer to "refocus at
+   t=10s vs t=30s with staleTime:20_000, and why" — that's the own-the-model check, not "it runs".
 3. **Query keys as structure** — array keys, keys-as-dependencies, filtered/by-id lists;
    sets up cache invalidation. Ground in Applyo's status filter.
 4. **Mutations & invalidation** — `useMutation` for create + the opportunity→application

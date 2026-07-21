@@ -46,6 +46,19 @@
     <tr><td><code>isFetching</code></td><td>queryFn running (incl. background)</td><td>Subtle "refreshing" spinner over old data</td></tr>
   </table></div>
 
+  <h2>Fresh / stale &amp; the two clocks</h2>
+  <p class="small">Every cached query is <strong>fresh</strong> (served from cache, no request) or <strong>stale</strong> (still shown, but refetch-eligible). <code>staleTime</code> is the age at which fresh → stale.</p>
+  <div class="scroll"><table>
+    <tr><th></th><th><code>staleTime</code></th><th><code>gcTime</code> (was <code>cacheTime</code>)</th></tr>
+    <tr><td>Governs</td><td>Trust — when to refetch</td><td>Retention — when to delete</td></tr>
+    <tr><td>Default</td><td><code>0</code> — stale immediately</td><td><code>5 min</code></td></tr>
+    <tr><td>Clock starts</td><td>when data arrives</td><td>when query goes <em>unused</em> (no observer)</td></tr>
+    <tr><td>On expiry</td><td>shown, but refetch-eligible</td><td>deleted from cache</td></tr>
+  </table></div>
+<pre><code>useQuery({ queryKey, queryFn, staleTime: <span class="tok-str">20_000</span> });  <span class="tok-com">// per-query</span>
+<span class="tok-key">new</span> QueryClient({ defaultOptions: { queries: { staleTime: <span class="tok-str">30_000</span> } } }); <span class="tok-com">// global</span></code></pre>
+  <p class="small"><strong>A <em>stale</em> query auto-refetches on:</strong> mount (<code>refetchOnMount</code>) · window refocus (<code>refetchOnWindowFocus</code>) · reconnect (<code>refetchOnReconnect</code>). With <code>staleTime: 0</code> that's <em>every</em> such event; raise it and those events no-op while fresh. On a background refetch old data stays on screen: <code>isPending</code> false, <code>isFetching</code> true. <strong>Trap:</strong> <code>staleTime</code> ≠ retention — <code>staleTime: Infinity</code> data is still GC'd 5 min after nothing renders it.</p>
+
   <h2>queryKey patterns</h2>
 <pre><code>[<span class="tok-str">"opportunities"</span>]                          <span class="tok-com">// the whole list</span>
 [<span class="tok-str">"opportunities"</span>, { status: <span class="tok-str">"saved"</span> }]      <span class="tok-com">// a filtered list — different address</span>
@@ -77,7 +90,7 @@
   </table></div>
 
   <div class="footer-nav">
-    <span><a href="../lessons/0004-server-state-first-query.html">← Lesson 1</a></span>
+    <span><a href="../lessons/0004-server-state-first-query.html">← Lesson 1</a> · <a href="../lessons/0005-staletime-fresh-stale-refetch.html">Lesson 2 →</a></span>
     <span class="ask">Reference sheet — grows each lesson. Ask me to add anything you keep looking up.</span>
   </div>
 </div>

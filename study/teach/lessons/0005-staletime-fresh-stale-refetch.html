@@ -1,0 +1,176 @@
+<title>TanStack Query · Lesson 2 · staleTime & the fresh → stale → refetch model</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap">
+  <p class="eyebrow">Applyo · TanStack Query · Lesson 2</p>
+  <h1>staleTime, and the one knob that runs it all</h1>
+  <p class="lede">Last lesson your two components shared one request, and navigating away and back didn't refetch — "within the default stale window," I said, and left it there. This is that window. <code>staleTime</code> is the single dial that decides when your cached copy is trusted and when it's chased down again.</p>
+
+  <p>In <a href="0004-server-state-first-query.html">Lesson 1</a> you built the read path and learned the reframe: you're not fetching, you're <em>caching a copy of server-owned data</em>. That immediately raises the only real question a cache ever asks — <strong>when is my copy too old to trust?</strong> TanStack Query answers it with one primary setting. Get this one right and you stop fighting the library's "why did it refetch again?!" defaults.</p>
+
+  <h2>Two states every cache entry lives in</h2>
+  <p>Each query in the cache is either <strong>fresh</strong> or <strong>stale</strong>. That's the whole model:</p>
+  <div class="pipeline">
+    <div class="stage before"><span class="lbl">Fresh</span>Young enough to trust. Served <em>from cache only</em> — no network request fires, no matter how many components ask for it.</div>
+    <div class="gate">staleTime<br>elapses</div>
+    <div class="stage after"><span class="lbl">Stale</span>Old enough to doubt. Still shown instantly from cache, but now a <strong>background refetch</strong> can fire to refresh it.</div>
+  </div>
+  <p><code>staleTime</code> is the age at which fresh becomes stale — measured from when the data last arrived. <em>"As long as data is fresh, it will always come from the cache only. You will not see a network request for fresh data, no matter how often you want to retrieve it"</em> (<a href="https://tkdodo.eu/blog/react-query-as-a-state-manager" target="_blank" rel="noopener">TkDodo</a>). Stale data isn't wrong or thrown away — it's still rendered — it's merely <em>eligible</em> to be refreshed.</p>
+
+  <div class="aha">
+    <span class="tag">The reframe in one line</span>
+    <code>staleTime</code> doesn't schedule refetches. It sets how long the cache is <strong>trusted without checking</strong>. Refetches are <em>triggered</em> by events — a mount, a refocus, a reconnect — and only actually fire if the data is <em>already</em> stale when the event happens.
+  </div>
+
+  <h2>Why your data refetches "for no reason"</h2>
+  <p>Here's the default that surprises everyone: <strong><code>staleTime</code> is <code>0</code></strong>. Data is stale the instant it arrives. So <em>"every time you e.g. mount a new component instance, you will get a background refetch"</em> (<a href="https://tkdodo.eu/blog/react-query-as-a-state-manager" target="_blank" rel="noopener">TkDodo</a>). That's not a bug — it's a deliberately safe default (assume data can change any moment), and it's exactly why in Lesson 1 remounting felt so eager.</p>
+  <p>A stale query auto-refetches on three triggers (<a href="https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults" target="_blank" rel="noopener">Important Defaults</a>):</p>
+  <ul>
+    <li>a new component instance <strong>mounts</strong> (<code>refetchOnMount</code>)</li>
+    <li>the <strong>window is refocused</strong> — you tab away to a job board and back (<code>refetchOnWindowFocus</code>)</li>
+    <li>the <strong>network reconnects</strong> (<code>refetchOnReconnect</code>)</li>
+  </ul>
+  <p>With <code>staleTime: 0</code>, <em>every one</em> of those events refetches, because the data is always already stale. Raise <code>staleTime</code> and the same events become no-ops while the clock is running — the trigger fires, sees fresh data, and does nothing. That's the control you were missing.</p>
+
+  <div class="quiz" id="q1">
+    <p class="q">1. With the default <code>staleTime</code>, when does freshly-arrived data become stale?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Immediately, the moment it arrives</button>
+      <button class="opt" data-ok="0">Exactly five minutes after arrival</button>
+      <button class="opt" data-ok="0">Only once the window is refocused</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Setting the knob</h2>
+  <p>Per-query, in the same <code>useQuery</code> you already wrote — <code>staleTime</code> is in milliseconds:</p>
+<pre><code><span class="tok-key">const</span> { data, isPending, isFetching } = useQuery({
+  queryKey: [<span class="tok-str">"opportunities"</span>],
+  queryFn: fetchOpportunities,
+  staleTime: <span class="tok-str">20_000</span>,   <span class="tok-com">// trust the cache for 20s; no refetch on mount/focus within it</span>
+});</code></pre>
+  <p>TkDodo's own habit: <em>"I like to set it to a minimum of 20 seconds to deduplicate requests in that time frame, but it's totally up to you."</em> There is <em>"no 'correct' value"</em> — it's a product decision. For Applyo's opportunities list, which you edit rarely and read often, seconds-to-minutes is sensible; for a live-changing feed you'd keep it low. Set it globally as a default when most queries want the same policy:</p>
+<pre><code><span class="tok-com">// in providers.tsx — the QueryClient you were given in Lesson 1</span>
+<span class="tok-key">new</span> QueryClient({
+  defaultOptions: { queries: { staleTime: <span class="tok-str">30_000</span> } }, <span class="tok-com">// every query, unless it overrides</span>
+});</code></pre>
+
+  <h2>The confusion to kill now: <code>staleTime</code> vs <code>gcTime</code></h2>
+  <p>These get mixed up constantly, and the interview loves the difference. They measure two different clocks:</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th></th><th><code>staleTime</code></th><th><code>gcTime</code></th></tr></thead>
+    <tbody>
+      <tr><td>Question</td><td>Is my copy still <strong>trusted</strong>?</td><td>Should I <strong>keep</strong> this copy at all?</td></tr>
+      <tr><td>Default</td><td><code>0</code> (stale at once)</td><td><code>5 min</code></td></tr>
+      <tr><td>Clock starts</td><td>when data arrives</td><td>when the query goes <em>unused</em> (no component observing it)</td></tr>
+      <tr><td>On expiry</td><td>data is shown but <em>refetch-eligible</em></td><td>data is <strong>deleted</strong> from the cache</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p><strong>Fresh/stale is about <em>trust</em>; gc is about <em>memory</em>.</strong> A query only starts its <code>gcTime</code> countdown once <em>nothing is rendering it</em> — you navigate away and no component observes that key anymore. Come back within 5 minutes and the cached data is still there to show instantly (then a refetch fires if it's stale). Come back after, and it's gone — you're back to a <code>pending</code> first-load. (Note the v5 rename: it was <code>cacheTime</code> in v4.)</p>
+
+  <div class="quiz" id="q2">
+    <p class="q">2. What does <code>gcTime</code> control, as opposed to <code>staleTime</code>?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">How long unused data stays cached</button>
+      <button class="opt" data-ok="0">How soon fresh data turns stale</button>
+      <button class="opt" data-ok="0">How many times a query will retry</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>What "background refetch" looks like — the L1 payoff</h2>
+  <p>Remember <code>isPending</code> vs <code>isFetching</code> from Lesson 1? Stale-refetching is exactly where that split earns its keep. When a stale query refetches, the old data <em>stays on screen</em>:</p>
+  <ul>
+    <li><code>isPending</code> is <strong>false</strong> — you have data (the cached copy), so no skeleton.</li>
+    <li><code>isFetching</code> is <strong>true</strong> — the <code>queryFn</code> is running in the background.</li>
+  </ul>
+  <p>That's how a good app refreshes silently: the opportunities list never blanks out, it just quietly updates, optionally under a subtle "refreshing…" spinner driven by <code>isFetching</code>. With <code>staleTime: 0</code> you get this constantly; with a sane <code>staleTime</code> you get it only when the data has genuinely aged. Same machinery, under your control.</p>
+
+  <div class="quiz" id="q3">
+    <p class="q">3. Data is still fresh. A second component mounts with the same key. What happens?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Served from cache, no network request</button>
+      <button class="opt" data-ok="0">A single background refetch is fired</button>
+      <button class="opt" data-ok="0">It shows pending until the refetch ends</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Your win for today</h2>
+  <p>You already have the opportunities query running. Today you <em>observe and control</em> its freshness — no new feature, one new setting, and proof that you understand what it does. The <strong>Devtools panel is your instrument</strong> (you were nudged to install it in L1 — now it pays off: it colours each query <span style="color:var(--good)">fresh</span> vs <span style="color:var(--accent)">stale</span> live).</p>
+
+  <h3>Yours to build &amp; prove</h3>
+  <ol>
+    <li><strong>Watch the default first.</strong> Leave <code>staleTime</code> off (so it's <code>0</code>). Open React Query Devtools. Load the page, then <em>tab away to another window and back</em>. Watch the query flip to <span style="color:var(--accent)">stale</span> instantly and fire a refetch on refocus — the Network panel confirms it. This is the behaviour you're about to tame.</li>
+    <li><strong>Add <code>staleTime: 20_000</code></strong> to the opportunities <code>useQuery</code>. Now repeat: tab away and back <em>within 20s</em> → the query is <span style="color:var(--good)">fresh</span>, and <strong>no request fires</strong> (check the Network panel — nothing). Wait past 20s, refocus → <em>one</em> background request, and the list <strong>never blanks</strong> (confirm <code>isPending</code> stays false, <code>isFetching</code> briefly true — log them or render them).</li>
+    <li><strong>Predict, then check <code>gcTime</code>.</strong> If you have a second route with a <code>&lt;Link&gt;</code> (from L1's optional step), navigate away from the list so nothing observes <code>["opportunities"]</code>. Before you navigate back, <em>write down</em>: within 5 min — cached or refetched-from-scratch? Then go back and confirm against Devtools. (Don't change <code>gcTime</code>; just observe the default.)</li>
+  </ol>
+  <p class="small">DoD: it runs, types/lint pass, committed, 2–3 line journal note (what clicked about fresh vs stale, what's still fuzzy). Then tell me: <em>with <code>staleTime: 20_000</code>, what exactly happens on refocus at t=10s vs t=30s, and why?</em> — that one answer tells me you own the model.</p>
+
+  <div class="warn">
+    <span class="tag">Don't confuse the two clocks</span>
+    "Set <code>staleTime</code> high so my data stays cached longer" is the classic mistake. <code>staleTime</code> controls <em>refetching</em> (trust), not <em>retention</em> (memory) — that's <code>gcTime</code>. A query with <code>staleTime: Infinity</code> still gets garbage-collected 5 minutes after nothing renders it.
+  </div>
+
+  <details class="reveal">
+    <summary>Self-test before Lesson 3</summary>
+    <p>From memory — no peeking at the table:</p>
+    <ul>
+      <li>What are the two states a cached query lives in, and what moves it between them?</li>
+      <li>What is the default <code>staleTime</code>, and why does that make data refetch so often?</li>
+      <li>Name the three events that trigger an automatic refetch of a <em>stale</em> query.</li>
+      <li>One sentence each: what does <code>staleTime</code> control vs <code>gcTime</code>?</li>
+      <li>On a stale refetch, what are <code>isPending</code> and <code>isFetching</code> — and why doesn't the list blank?</li>
+    </ul>
+    <p>Fuzzy on any? That's your next question for me.</p>
+  </details>
+
+  <div class="aha">
+    <span class="tag">Interview-ready sentence</span>
+    "TanStack Query keeps each cached query as <em>fresh</em> or <em>stale</em>, and <code>staleTime</code> is the age at which fresh becomes stale. Fresh data is served from cache with no request; stale data is still shown but refetches in the background on mount, window refocus, or reconnect. The default <code>staleTime</code> is <code>0</code>, which is why data refetches so eagerly — raising it is usually the only knob I need. It's separate from <code>gcTime</code> (default 5 min), which is about <em>retention</em>: how long unused data survives in the cache before garbage collection."
+  </div>
+
+  <h2>Keep going</h2>
+  <p><strong>Primary source (read this next):</strong> <a href="https://tkdodo.eu/blog/react-query-as-a-state-manager" target="_blank" rel="noopener">TkDodo — "React Query as a State Manager"</a>, the <em>"staleTime"</em> section specifically. The maintainer's own case that this one setting is nearly all the configuration you need. Pair with the <a href="https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults" target="_blank" rel="noopener">Important Defaults</a> page for the exact refetch triggers.</p>
+  <p><strong>Reference:</strong> the <a href="../reference/tanstack-query-cheatsheet.html">TanStack Query cheat sheet</a> now has a <em>fresh/stale &amp; the two clocks</em> section.</p>
+  <p><strong>Next lesson:</strong> query keys as <em>structure</em> — array keys, keys-as-dependencies, and filtered/by-id lists (grounded in Applyo's status filter). That sets up cache invalidation for mutations. Lesson 3, when you're ready.</p>
+
+  <div class="footer-nav">
+    <span><a href="0004-server-state-first-query.html">← Lesson 1</a> · <a href="../reference/tanstack-query-cheatsheet.html">Cheat sheet →</a></span>
+    <span class="ask">I'm your teacher — ask me anything unclear, or paste your query + the t=10s/t=30s answer for review.</span>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var fb = quiz.querySelector('.feedback');
+    var msgs = {
+      q1: {
+        ok: "Right. The default <code>staleTime</code> is <code>0</code> — data is stale the instant it arrives. That's the safe default (assume it can change anytime), and it's why mounting/refocusing refetches so eagerly until you raise it.",
+        no: "Not quite. The default <code>staleTime</code> is <code>0</code>, so data is stale <em>immediately</em>. Five minutes is <code>gcTime</code> (retention), and refocus is a refetch <em>trigger</em>, not the moment data goes stale."
+      },
+      q2: {
+        ok: "Exactly. <code>gcTime</code> (default 5 min) is about <em>retention</em>: how long an <em>unused</em> query — nothing rendering it — survives before it's deleted from the cache. <code>staleTime</code> is a separate clock about <em>trust</em>.",
+        no: "That's <code>staleTime</code>'s job (turning fresh to stale), or retry config. <code>gcTime</code> answers a different question: once nothing is observing a query, how long before it's evicted from the cache? Retention, not trust."
+      },
+      q3: {
+        ok: "Yes. Fresh data <em>always</em> comes from the cache — no network request, no matter how many components mount with that key. The refetch triggers only fire when the data is <em>already stale</em>.",
+        no: "Not while it's fresh. A refetch trigger (mount/focus/reconnect) only actually fetches if the data is <em>already stale</em>. Fresh data is served straight from cache with zero requests — that's the whole point of <code>staleTime</code>."
+      }
+    };
+    quiz.querySelectorAll('.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.dataset.ok === "1";
+        quiz.querySelectorAll('.opt').forEach(function (b) {
+          b.disabled = true;
+          if (b.dataset.ok === "1") b.classList.add('correct');
+        });
+        if (!correct) btn.classList.add('wrong');
+        fb.innerHTML = correct ? msgs[quiz.id].ok : msgs[quiz.id].no;
+        fb.className = 'feedback show ' + (correct ? 'ok' : 'no');
+      });
+    });
+  });
+</script>
