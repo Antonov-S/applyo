@@ -20,6 +20,17 @@ Sprint 1 has two halves: **Zod** (validation — mission largely delivered) and 
 - [TanStack Query docs — Query Keys](https://tanstack.com/query/latest/docs/framework/react/guides/query-keys)
   Keys are arrays compared by value; put every `queryFn` dependency in the key. Use for:
   designing keys for Applyo's list / filtered-list / by-id endpoints.
+- [TanStack Query docs — Query Functions](https://tanstack.com/query/latest/docs/framework/react/guides/query-functions)
+  The `QueryFunctionContext` (`queryKey`, `client`, `signal`, `meta`) and the destructuring
+  example `function fetchTodoList({ queryKey }) { const [_key, { status, page }] = queryKey }`.
+  Use for: passing query parameters via the key instead of a closure.
+- [TanStack Query docs — Query Invalidation](https://tanstack.com/query/latest/docs/framework/react/guides/query-invalidation)
+  Prefix matching (`['todos']` invalidates `['todos', { page: 1 }]` too) and `exact: true`.
+  Use for: Lesson 4's mutations, and for justifying the key hierarchy built in Lesson 3.
+- [TkDodo — "Effective React Query Keys"](https://tkdodo.eu/blog/effective-react-query-keys)
+  **The key-design primary source.** Colocate keys in a feature directory, always use arrays,
+  structure *most generic → most specific*, "one Query Key factory per feature". Use for:
+  Lesson 3 and every key you write afterwards.
 - [TkDodo — "React Query as a State Manager"](https://tkdodo.eu/blog/react-query-as-a-state-manager)
   **Highest-trust *why*.** The maintainer's own framing: React Query is an *async state
   manager*, not a data-fetching library; `staleTime` is usually the only knob you need.

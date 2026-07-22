@@ -59,11 +59,42 @@
 <span class="tok-key">new</span> QueryClient({ defaultOptions: { queries: { staleTime: <span class="tok-str">30_000</span> } } }); <span class="tok-com">// global</span></code></pre>
   <p class="small"><strong>A <em>stale</em> query auto-refetches on:</strong> mount (<code>refetchOnMount</code>) · window refocus (<code>refetchOnWindowFocus</code>) · reconnect (<code>refetchOnReconnect</code>). With <code>staleTime: 0</code> that's <em>every</em> such event; raise it and those events no-op while fresh. On a background refetch old data stays on screen: <code>isPending</code> false, <code>isFetching</code> true. <strong>Trap:</strong> <code>staleTime</code> ≠ retention — <code>staleTime: Infinity</code> data is still GC'd 5 min after nothing renders it.</p>
 
-  <h2>queryKey patterns</h2>
-<pre><code>[<span class="tok-str">"opportunities"</span>]                          <span class="tok-com">// the whole list</span>
-[<span class="tok-str">"opportunities"</span>, { status: <span class="tok-str">"saved"</span> }]      <span class="tok-com">// a filtered list — different address</span>
-[<span class="tok-str">"opportunity"</span>, id]                        <span class="tok-com">// one item by id</span></code></pre>
-  <p class="small">Keys are arrays, compared by value (deep). Put every variable the <code>queryFn</code> depends on <em>in the key</em> — change the inputs, change the address, get a fresh cache entry (and an automatic refetch).</p>
+  <h2>queryKey structure</h2>
+  <p class="small">A key does two jobs: it's the <strong>cache address</strong> and the <strong>dependency list</strong>. Structure them <em>generic → specific</em>.</p>
+<pre><code>[<span class="tok-str">"opportunities"</span>]                              <span class="tok-com">// everything opportunity-ish</span>
+[<span class="tok-str">"opportunities"</span>, <span class="tok-str">"list"</span>]                      <span class="tok-com">// all lists</span>
+[<span class="tok-str">"opportunities"</span>, <span class="tok-str">"list"</span>, { status: <span class="tok-str">"saved"</span> }]   <span class="tok-com">// one filtered list</span>
+[<span class="tok-str">"opportunities"</span>, <span class="tok-str">"detail"</span>, id]                <span class="tok-com">// one item</span></code></pre>
+  <div class="scroll"><table>
+    <tr><th>Rule</th><th>Effect</th></tr>
+    <tr><td>Object property order</td><td><strong>Irrelevant</strong> — keys are hashed deterministically</td></tr>
+    <tr><td>Array item order</td><td><strong>Matters</strong> — reorder = different address</td></tr>
+    <tr><td>Variable the <code>queryFn</code> reads</td><td>Must be <em>in the key</em>, always</td></tr>
+    <tr><td>Key changes</td><td>Different entry → auto-fetch; old entry stays cached</td></tr>
+  </table></div>
+  <p class="small"><strong>Trap:</strong> filter changes but the key doesn't → same entry, and if it's still <em>fresh</em> (<code>staleTime</code>) it's served from cache with <em>no request</em> — the UI looks dead. High <code>staleTime</code> makes this bug obvious rather than flickery.</p>
+
+  <h3>Key factory (one per feature, colocated with the fetchers)</h3>
+<pre><code><span class="tok-key">export const</span> opportunityKeys = {
+  all:    () =&gt; [<span class="tok-str">"opportunities"</span>] <span class="tok-key">as const</span>,
+  lists:  () =&gt; [...opportunityKeys.all(), <span class="tok-str">"list"</span>] <span class="tok-key">as const</span>,
+  list:   (filters) =&gt; [...opportunityKeys.lists(), filters] <span class="tok-key">as const</span>,
+  detail: (id) =&gt; [...opportunityKeys.all(), <span class="tok-str">"detail"</span>, id] <span class="tok-key">as const</span>,
+};</code></pre>
+
+  <h3>Prefix matching (what the hierarchy buys you)</h3>
+  <div class="scroll"><table>
+    <tr><th>Call</th><th>Hits</th></tr>
+    <tr><td><code>invalidateQueries({ queryKey: opportunityKeys.all() })</code></td><td>every opportunity query — lists <em>and</em> details</td></tr>
+    <tr><td><code>invalidateQueries({ queryKey: opportunityKeys.lists() })</code></td><td>all lists, every filter; details untouched</td></tr>
+    <tr><td><code>invalidateQueries({ queryKey: [...], exact: true })</code></td><td>that one entry only</td></tr>
+  </table></div>
+
+  <h3>Reading the key in the <code>queryFn</code></h3>
+<pre><code>queryFn: ({ queryKey, signal }) =&gt; {
+  <span class="tok-key">const</span> [, , { status }] = queryKey;   <span class="tok-com">// context also carries: client, meta</span>
+  <span class="tok-key">return</span> fetchOpportunities(status, signal);
+}</code></pre>
 
   <h2>App Router setup (Next.js 16)</h2>
 <pre><code><span class="tok-com">// src/app/providers.tsx</span>
@@ -84,13 +115,13 @@
   <h2>Where this maps to Applyo</h2>
   <div class="scroll"><table>
     <tr><th>Need</th><th>Endpoint</th><th>queryKey</th></tr>
-    <tr><td>List opportunities</td><td><code>GET /api/opportunities</code></td><td><code>["opportunities"]</code></td></tr>
-    <tr><td>One opportunity</td><td><code>GET /api/opportunities/[id]</code></td><td><code>["opportunity", id]</code></td></tr>
-    <tr><td>Filtered list</td><td><code>GET /api/opportunities?status=</code></td><td><code>["opportunities", { status }]</code></td></tr>
+    <tr><td>List opportunities</td><td><code>GET /api/opportunities</code></td><td><code>["opportunities", "list", {}]</code></td></tr>
+    <tr><td>Filtered list</td><td><code>GET /api/opportunities?status=</code></td><td><code>["opportunities", "list", { status }]</code></td></tr>
+    <tr><td>One opportunity</td><td><code>GET /api/opportunities/[id]</code></td><td><code>["opportunities", "detail", id]</code></td></tr>
   </table></div>
 
   <div class="footer-nav">
-    <span><a href="../lessons/0004-server-state-first-query.html">← Lesson 1</a> · <a href="../lessons/0005-staletime-fresh-stale-refetch.html">Lesson 2 →</a></span>
+    <span><a href="../lessons/0004-server-state-first-query.html">← Lesson 1</a> · <a href="../lessons/0005-staletime-fresh-stale-refetch.html">Lesson 2</a> · <a href="../lessons/0006-query-keys-as-structure.html">Lesson 3 →</a></span>
     <span class="ask">Reference sheet — grows each lesson. Ask me to add anything you keep looking up.</span>
   </div>
 </div>

@@ -92,3 +92,17 @@ the last component stops using the query -> the query becomes inactive -> gcTime
 **Learned:** Importing a Client Component does not turn its Server Component parent into client code because the boundary follows the module dependency graph. `"use client"` marks a client entry point and its imports as part of the client bundle, but it does not propagate upward.
 
 **Still unclear:** This part is little fuzzy: The parent renders on the server, while the RSC payload contains a reference to the Client Component, which is then hydrated in the browser.
+
+## 2026-07-21 — TanStack Query: Lesson 3
+
+**Learned:** Query keys are an address for data in the cache and act as dependencies for your query functions.
+
+Query keys are hashed deterministically (order for object properties doesn't matter), array query keys order matters.
+
+Generic → specific, so invalidation has something to grab. Each level builds on the one above, so the hierarchy can't drift. as const keeps the tuple literal. Matching is by prefix. ["opportunities"] also matches ["opportunities", "list", { status }]
+
+Typos in a key string don't error - they silently create a second cache entry.
+
+A query key is the cache address and the dependency list. Keys are arrays hashed deterministically — object property order doesn't matter, array order does — so I structure them generic to specific, like ['opportunities', 'list', { status }], usually behind a key factory per feature. Anything the queryFn reads goes in the key: change a filter and you're addressing a different cache entry, which refetches automatically while the previous one stays cached for instant switch-back. And because invalidateQueries matches by prefix, that hierarchy is what lets a mutation refresh every list without touching the detail views.
+
+**Still unclear:** -

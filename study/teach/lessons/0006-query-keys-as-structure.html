@@ -1,0 +1,175 @@
+<title>TanStack Query · Lesson 3 · Query keys as structure</title>
+<link rel="stylesheet" href="../assets/course.css">
+
+<div class="wrap">
+  <p class="eyebrow">Applyo · TanStack Query · Lesson 3</p>
+  <h1>Query keys are structure, not labels</h1>
+  <p class="lede">So far <code>["opportunities"]</code> has been a name you picked. Today it becomes an <em>address system</em> — one that decides what shares a cache entry, what refetches when a filter changes, and (next lesson) what a mutation is allowed to invalidate.</p>
+
+  <p>You have the read path (<a href="0004-server-state-first-query.html">Lesson 1</a>) and you control freshness (<a href="0005-staletime-fresh-stale-refetch.html">Lesson 2</a>). Both assumed <em>one</em> query. Real Applyo has many: all opportunities, only the <code>saved</code> ones, only <code>ready_to_apply</code>, one by id. Each is a different slice of server state, and the key is how you tell them apart.</p>
+
+  <h2>The key does two jobs at once</h2>
+  <div class="pipeline">
+    <div class="stage before"><span class="lbl">Address</span>Where this data lives in the cache. Same key → same entry → shared data, one request.</div>
+    <div class="gate">one array</div>
+    <div class="stage after"><span class="lbl">Dependency</span>What the <code>queryFn</code> reads. Change a value in the key → different entry → automatic fetch.</div>
+  </div>
+  <p>The docs are explicit about the second job: <em>"query keys act as dependencies for your query functions. Adding dependent variables to your query key will ensure that queries are cached independently, and that any time a variable changes, queries will be refetched automatically"</em> (<a href="https://tanstack.com/query/latest/docs/framework/react/guides/query-keys" target="_blank" rel="noopener">Query Keys</a>).</p>
+
+  <div class="aha">
+    <span class="tag">The one rule</span>
+    <strong>If your <code>queryFn</code> reads a variable, that variable belongs in the <code>queryKey</code>.</strong> No exceptions. A filter, an id, a page number, a search term — anything that changes what comes back.
+  </div>
+
+  <p>It <em>resembles</em> a <code>useEffect</code> dependency array, but don't stop at the analogy — it's stronger. A changed <code>useEffect</code> dep re-runs the same effect. A changed <code>queryKey</code> points at a <em>different cache entry entirely</em>: the old one isn't overwritten, it stays cached under its own key, so switching back is instant.</p>
+
+  <h2>How keys are compared</h2>
+  <p>Two rules, and they're not symmetrical (<a href="https://tanstack.com/query/latest/docs/framework/react/guides/query-keys" target="_blank" rel="noopener">Query Keys</a>):</p>
+  <ul>
+    <li><strong>"Query Keys are hashed deterministically!"</strong> — <em>"no matter the order of keys in objects"</em>. So <code>{ status, page }</code> and <code>{ page, status }</code> are the same address.</li>
+    <li><strong>"Array item order matters!"</strong> — <code>["opps", "saved", 1]</code> and <code>["opps", 1, "saved"]</code> are two different addresses.</li>
+  </ul>
+  <p>Hence the convention: <strong>fixed segments in array position (generic → specific), variable parameters in a trailing object.</strong> Positions carry meaning; object properties don't have to.</p>
+
+  <div class="quiz" id="q1">
+    <p class="q">1. Which two keys address the <em>same</em> cache entry?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1"><code>["o", { s: "saved", p: 1 }]</code> and <code>["o", { p: 1, s: "saved" }]</code></button>
+      <button class="opt" data-ok="0"><code>["o", "saved", 1]</code> and <code>["o", 1, "saved"]</code></button>
+      <button class="opt" data-ok="0"><code>["o", { s: "saved" }]</code> and <code>["o", "saved"]</code></button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Generic → specific, so invalidation has something to grab</h2>
+  <p>TkDodo's guidance is to <em>"structure your Query Keys from most generic to most specific, with as many levels of granularity as you see fit"</em> (<a href="https://tkdodo.eu/blog/effective-react-query-keys" target="_blank" rel="noopener">Effective React Query Keys</a>). For Applyo:</p>
+<pre><code>[<span class="tok-str">"opportunities"</span>]                            <span class="tok-com">// everything opportunity-ish</span>
+[<span class="tok-str">"opportunities"</span>, <span class="tok-str">"list"</span>]                    <span class="tok-com">// all lists</span>
+[<span class="tok-str">"opportunities"</span>, <span class="tok-str">"list"</span>, { status: <span class="tok-str">"saved"</span> }] <span class="tok-com">// one filtered list</span>
+[<span class="tok-str">"opportunities"</span>, <span class="tok-str">"detail"</span>, id]              <span class="tok-com">// one opportunity</span></code></pre>
+  <p>Why the ceremony? Because matching is by <strong>prefix</strong>. <code>invalidateQueries({ queryKey: ["opportunities"] })</code> hits every key that <em>starts</em> with it — both <code>["opportunities"]</code> and <code>["opportunities", { page: 1 }]</code> are invalidated in the docs' own example (<a href="https://tanstack.com/query/latest/docs/framework/react/guides/query-invalidation" target="_blank" rel="noopener">Query Invalidation</a>). Narrow the prefix to <code>["opportunities", "list"]</code> and you refresh the lists but leave the detail views alone; add <code>exact: true</code> and you hit one entry only.</p>
+  <p class="small">That's next lesson's machinery — but you have to <em>build the structure today</em> for it to exist tomorrow. Keys designed as flat labels are what make invalidation painful later.</p>
+
+  <h2>The key factory</h2>
+  <p>Typos in a key string don't error — they silently create a second cache entry, and you debug a "why isn't my list updating" ghost. So: <em>"one Query Key factory per feature"</em>, colocated with the queries (<a href="https://tkdodo.eu/blog/effective-react-query-keys" target="_blank" rel="noopener">TkDodo</a>).</p>
+<pre><code><span class="tok-com">// src/lib/api/opportunities.ts — next to the fetchers that use them</span>
+<span class="tok-key">export const</span> opportunityKeys = {
+  all:    () =&gt; [<span class="tok-str">"opportunities"</span>] <span class="tok-key">as const</span>,
+  lists:  () =&gt; [...opportunityKeys.all(), <span class="tok-str">"list"</span>] <span class="tok-key">as const</span>,
+  list:   (filters: { status?: OpportunityStatus }) =&gt;
+            [...opportunityKeys.lists(), filters] <span class="tok-key">as const</span>,
+  detail: (id: <span class="tok-key">string</span>) =&gt;
+            [...opportunityKeys.all(), <span class="tok-str">"detail"</span>, id] <span class="tok-key">as const</span>,
+};</code></pre>
+  <p>Each level builds on the one above, so the hierarchy can't drift. <code>as const</code> keeps the tuple literal — your <code>queryFn</code> can then destructure the key with real types instead of <code>any</code>.</p>
+
+  <h2>Reading the key inside the <code>queryFn</code></h2>
+  <p>The <code>queryFn</code> doesn't receive nothing — it gets a <code>QueryFunctionContext</code>, which carries <code>queryKey</code> (plus <code>client</code>, <code>signal</code>, <code>meta</code>). So the key can be the single source of the parameters:</p>
+<pre><code><span class="tok-key">function</span> fetchTodoList({ queryKey }) {
+  <span class="tok-key">const</span> [_key, { status, page }] = queryKey
+  <span class="tok-key">return new</span> Promise()
+}</code></pre>
+  <p class="small">— straight from the <a href="https://tanstack.com/query/latest/docs/framework/react/guides/query-functions" target="_blank" rel="noopener">Query Functions</a> docs. Either that, or close over the variable and pass it explicitly — both fine, as long as it's <em>also</em> in the key. Reading it from the context just makes forgetting harder.</p>
+
+  <h2>What forgetting looks like — and why L2 makes it worse</h2>
+  <p>Here's the interleave. Suppose the filter changes from <code>saved</code> to <code>reviewing</code>, but your key stays <code>["opportunities"]</code>. The address didn't change, so React Query looks up the same entry — and thanks to your <code>staleTime: 20_000</code>, that entry is <strong>fresh</strong>. Fresh data is served from cache with no request. The user clicks the filter and <em>nothing happens at all</em>.</p>
+  <p>With the default <code>staleTime: 0</code> this bug half-hides: the render triggers a refetch, the new data lands in the wrong address, and it mostly looks right until two filters fight over one entry. <strong>A correct <code>staleTime</code> turns a flickery bug into a dead-obvious one.</strong> The two settings are one system.</p>
+
+  <div class="quiz" id="q2">
+    <p class="q">2. Filter changes <code>saved</code> → <code>reviewing</code>; the key stays <code>["opportunities"]</code>, <code>staleTime: 20_000</code>. Within those 20s, what does the user see?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">The old list, and no request fires</button>
+      <button class="opt" data-ok="0">The old list, refetched in background</button>
+      <button class="opt" data-ok="0">The pending state, then a new list</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz" id="q3">
+    <p class="q">3. <code>invalidateQueries({ queryKey: ["opportunities"] })</code> — which cached queries match?</p>
+    <div class="opts">
+      <button class="opt" data-ok="1">Every key beginning with that prefix</button>
+      <button class="opt" data-ok="0">Only that identical array key alone</button>
+      <button class="opt" data-ok="0">Any key holding that string anywhere</button>
+    </div>
+    <div class="feedback"></div>
+  </div>
+
+  <h2>Your win for today</h2>
+  <p>Applyo's opportunities have a real <code>status</code> enum from your Zod schema — <code>saved</code>, <code>reviewing</code>, <code>ready_to_apply</code>, <code>ignored</code>, <code>expired</code>, <code>converted</code>. Today the list gets a status filter, and you watch the cache grow one entry per filter value.</p>
+
+  <h3>Yours to build &amp; prove</h3>
+  <ol>
+    <li><strong>Teach the handler the filter.</strong> In <code>src/app/api/opportunities/route.ts</code>, read <code>?status=</code> off the request URL and filter <code>MOCK</code>; no param = the full list. (Keep it a fixture — five lines, not a backend.)</li>
+    <li><strong>Filter in the component.</strong> <code>useState</code> for the selected status, a <code>&lt;select&gt;</code> of the enum values, and the key becomes <code>["opportunities", "list", { status }]</code>. Have <code>fetchOpportunities</code> take the status and build the URL.</li>
+    <li><strong>Watch the cache in Devtools.</strong> Flip through three filter values. You should see <em>three separate entries</em>, each with its own fresh/stale clock. Now flip <em>back</em> to one you visited under 20s ago: instant, zero network. That's the address system paying you.</li>
+    <li><strong>Break it on purpose</strong> (30 seconds, do it): drop <code>{ status }</code> from the key, keep it in the fetch URL. Predict what the UI does <em>before</em> you click — then click. Restore it. This is the bug you'll now recognise in one guess.</li>
+    <li><strong>Refactor to a factory.</strong> Move the keys into an <code>opportunityKeys</code> object next to the fetchers and use it in the query. Nothing should change at runtime — that's the point.</li>
+  </ol>
+  <p class="small">DoD: it runs, types/lint pass, committed, 2–3 line journal note. Then tell me: <em>why does putting the filter in the key give you instant back-and-forth switching, when a plain <code>useEffect</code> refetch wouldn't?</em> — that answer is the one that shows you own the cache-as-address model.</p>
+
+  <div class="warn">
+    <span class="tag">Stretch, only if the rest is done</span>
+    Switching to a filter you've <em>never</em> loaded flashes the pending state — new address, no data. That's correct, not broken. The fix has a name (<code>placeholderData</code> with <code>keepPreviousData</code>) and it's worth a look, but don't let it eat this session: the key structure is the lesson.
+  </div>
+
+  <details class="reveal">
+    <summary>Self-test before Lesson 4</summary>
+    <p>From memory, no scrolling up:</p>
+    <ul>
+      <li>What are the two jobs a <code>queryKey</code> does at once?</li>
+      <li>Which matters — object property order, or array item order?</li>
+      <li>Why generic → specific? What does that buy you at invalidation time?</li>
+      <li>What breaks if a <code>queryFn</code> variable is missing from the key — and why does a high <code>staleTime</code> make it more visible?</li>
+      <li>Name two things a <code>queryFn</code> gets on its context object.</li>
+    </ul>
+    <p>Interleaving check, from <a href="0005-staletime-fresh-stale-refetch.html">Lesson 2</a>: which clock starts when the query goes <em>unused</em>?</p>
+  </details>
+
+  <div class="aha">
+    <span class="tag">Interview-ready sentence</span>
+    "A query key is the cache address <em>and</em> the dependency list. Keys are arrays hashed deterministically — object property order doesn't matter, array order does — so I structure them generic to specific, like <code>['opportunities', 'list', { status }]</code>, usually behind a key factory per feature. Anything the <code>queryFn</code> reads goes in the key: change a filter and you're addressing a different cache entry, which refetches automatically while the previous one stays cached for instant switch-back. And because <code>invalidateQueries</code> matches by prefix, that hierarchy is what lets a mutation refresh every list without touching the detail views."
+  </div>
+
+  <h2>Keep going</h2>
+  <p><strong>Primary source (read this next):</strong> <a href="https://tkdodo.eu/blog/effective-react-query-keys" target="_blank" rel="noopener">TkDodo — "Effective React Query Keys"</a>. The maintainer's own conventions: colocate, always arrays, generic → specific, one factory per feature. Short, and it's the article the community quotes. Back it with the <a href="https://tanstack.com/query/latest/docs/framework/react/guides/query-keys" target="_blank" rel="noopener">Query Keys</a> guide for the hashing rules.</p>
+  <p><strong>Reference:</strong> the <a href="../reference/tanstack-query-cheatsheet.html">TanStack Query cheat sheet</a> now carries the full key-structure section, the factory pattern, and the prefix-matching table.</p>
+  <p><strong>Next lesson:</strong> mutations &amp; invalidation — <code>useMutation</code> for creating an opportunity and for the marquee action, converting an opportunity into an application, then <code>invalidateQueries</code> against the hierarchy you built today.</p>
+
+  <div class="footer-nav">
+    <span><a href="0005-staletime-fresh-stale-refetch.html">← Lesson 2</a> · <a href="../reference/tanstack-query-cheatsheet.html">Cheat sheet →</a></span>
+    <span class="ask">I'm your teacher — ask me anything unclear, or paste your key + filter code for review.</span>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var fb = quiz.querySelector('.feedback');
+    var msgs = {
+      q1: {
+        ok: "Right. Keys are hashed deterministically, so <em>object property order is irrelevant</em> — those two are one address. Array <em>item</em> order is the opposite: reorder it and you've addressed a different entry.",
+        no: "No — that's the asymmetry to remember. <strong>Object</strong> property order doesn't matter (deterministic hashing); <strong>array</strong> item order does. And <code>{ s: \"saved\" }</code> is not the same key segment as the bare string <code>\"saved\"</code>."
+      },
+      q2: {
+        ok: "Exactly — and this is the bug worth recognising instantly. Same key means same cache entry; the entry is still fresh, so it's served from cache with zero requests. The filter appears completely dead.",
+        no: "Not with <code>staleTime: 20_000</code>. The key didn't change, so it's the same cache entry — and that entry is <em>fresh</em>, which means served from cache, no request, no pending state. Nothing visibly happens at all."
+      },
+      q3: {
+        ok: "Yes — matching is by <strong>prefix</strong>. <code>[\"opportunities\"]</code> also matches <code>[\"opportunities\", \"list\", { status }]</code>. Pass <code>exact: true</code> when you want that one entry and nothing beneath it.",
+        no: "Prefix, not exact — and not a substring search either. <code>[\"opportunities\"]</code> matches every key <em>starting</em> with it, including <code>[\"opportunities\", \"list\", { status }]</code>. That's why hierarchy from generic to specific pays off."
+      }
+    };
+    quiz.querySelectorAll('.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.dataset.ok === "1";
+        quiz.querySelectorAll('.opt').forEach(function (b) {
+          b.disabled = true;
+          if (b.dataset.ok === "1") b.classList.add('correct');
+        });
+        if (!correct) btn.classList.add('wrong');
+        fb.innerHTML = correct ? msgs[quiz.id].ok : msgs[quiz.id].no;
+        fb.className = 'feedback show ' + (correct ? 'ok' : 'no');
+      });
+    });
+  });
+</script>

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import type { Opportunity } from "@/lib/schemas/opportunity";
 
 const MOCK: Opportunity[] = [
@@ -30,6 +30,13 @@ const MOCK: Opportunity[] = [
   }
 ];
 
-export function GET() {
-  return NextResponse.json(MOCK);
+export async function GET(request: NextRequest) {
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  const status = request.nextUrl.searchParams.get("status");
+
+  const opportunities = status
+    ? MOCK.filter(opportunity => opportunity.status === status)
+    : MOCK;
+
+  return NextResponse.json(opportunities);
 }

@@ -44,8 +44,17 @@
    `isPending`/`isFetching` reused as the "background refetch doesn't blank the list" payoff, and
    Devtools used as the live fresh/stale instrument. Verify signal: their answer to "refocus at
    t=10s vs t=30s with staleTime:20_000, and why" — that's the own-the-model check, not "it runs".
-3. **Query keys as structure** — array keys, keys-as-dependencies, filtered/by-id lists;
-   sets up cache invalidation. Ground in Applyo's status filter.
+3. **Query keys as structure** — key = address + dependency list; deterministic hashing (object
+   order irrelevant, array order matters); generic→specific hierarchy; key factory; reading the
+   key off `QueryFunctionContext`. Grounded in Applyo's real `status` enum + `?status=` handler.
+   ← TQ Lesson 3 (file `0006`) ✅ delivered (2026-07-22). Per
+   [[0005-staletime-owned-recalibrate-to-interleaving]] this is the first lesson designed for
+   *durability* rather than exposition: L2 is interleaved into L3's failure mode (missing key
+   variable + fresh `staleTime` = silently dead filter), and "break it on purpose, predict first"
+   is a required build step. Verify signal: *why does the key give instant back-and-forth
+   switching where a `useEffect` refetch wouldn't* — that's the cache-as-address check.
+   Planted seed: `placeholderData` / `keepPreviousData` (flagged as stretch only — harvest in L4
+   or a later UX-of-caching lesson).
 4. **Mutations & invalidation** — `useMutation` for create + the opportunity→application
    convert (the marquee domain action); `invalidateQueries` so the list reflects the change.
 5. (Later) RSC → client hydration / streaming initial data — needs the RESOURCES gap filled.

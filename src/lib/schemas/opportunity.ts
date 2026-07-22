@@ -126,3 +126,5 @@ const OpportunitySchema = z.object({
 });
 
 export type Opportunity = z.infer<typeof OpportunitySchema>;
+
+export type OpportunityStatus = Opportunity["status"];

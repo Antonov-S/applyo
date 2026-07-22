@@ -102,3 +102,9 @@ type User = HasId & {
 **Mistake:** I said the boundary is drawn simply at the file level and that React uses the import tree rather than the render tree. This was too absolute and did not clearly explain what happens during rendering.
 
 **Correction:** "use client" creates a client entry point in the module dependency graph. That file and the modules it imports become part of the client bundle, but this does not propagate upward to the Server Component that imports it. The parent still renders on the server, while the RSC payload contains a reference to the Client Component, which is then hydrated in the browser.
+
+## 2026-07-21 — TanStack Query: Lesson 3
+
+**Mistake:** -
+
+**Correction:** -
